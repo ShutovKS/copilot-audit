@@ -1,33 +1,42 @@
-# TestOps Evolution Forge Backend
+# TestOps Forge Backend
 
-## Setup for Development
+Backend-сервис, реализующий логику мульти-агентной системы для генерации тестов.
 
-1. **Install Poetry:**
-   ```bash
-   curl -sSL https://install.python-poetry.org | python3 -
-   ```
+## Структура проекта
 
-2. **Install Dependencies:**
+* `src/app/agents/` — Логика агентов (Analyst, Coder) и граф LangGraph.
+* `src/app/services/tools/` — Инструменты (Linter, Pytest Runner).
+* `src/app/services/parsers/` — Парсеры (OpenAPI/Swagger).
+* `src/app/api/` — FastAPI эндпоинты.
+
+## Локальная разработка
+
+1. **Установка зависимостей (Poetry):**
    ```bash
    poetry install
    ```
 
-3. **Run Server:**
+2. **Запуск сервера:**
    ```bash
    poetry run uvicorn src.app.main:app --reload
    ```
 
-4. **Linting:**
+3. **Запуск тестов:**
    ```bash
-   poetry run ruff check .
+   poetry run pytest
    ```
 
----
+## Переменные окружения
 
-### ✅ Финальная проверка
+| Переменная          | Описание                                |
+|---------------------|-----------------------------------------|
+| `CLOUD_RU_API_KEY`  | API ключ от Cloud.ru Evolution          |
+| `CLOUD_RU_BASE_URL` | Base URL для LLM API                    |
+| `MODEL_NAME`        | Модель (например, `Qwen/Qwen2.5-Coder`) |
+| `ENVIRONMENT`       | `dev` / `prod`                          |
 
-1.  Запусти сервер: `poetry run uvicorn src.app.main:app --reload`
-2.  Должна появиться надпись: `Uvicorn running on http://127.0.0.1:8000`.
-3.  Нажми `Ctrl+C` для остановки.
+## Docker Build
 
-Теперь проект инициализирован идеально. Можем переходить к конфигам (Карточка 1.2).
+```bash
+docker build -t testops-backend .
+```
