@@ -1,0 +1,12 @@
+__pycache__
+.venv
+*/.env
+!.env.example
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.pyc
+.DS_Store
+all_sources.md
+.vscode/
+.idea/
