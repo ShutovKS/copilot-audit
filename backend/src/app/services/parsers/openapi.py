@@ -53,7 +53,21 @@ class OpenAPIParser:
                     continue
                 
                 desc = details.get("summary") or details.get("description", "No description")
-                summary.append(f"- {method.upper()} {path} : {desc}")
+                
+                # Extract parameters
+                params = []
+                if "parameters" in details:
+                    for p in details["parameters"]:
+                        name = p.get("name")
+                        required = "*" if p.get("required") else ""
+                        params.append(f"{name}{required}")
+                
+                # Extract request body hint
+                if "requestBody" in details:
+                    params.append("BODY")
+
+                param_str = f"[{', '.join(params)}]" if params else ""
+                summary.append(f"- {method.upper()} {path} {param_str} : {desc}")
                 count += 1
                 
                 # Limit context for MVP to first 20 endpoints to avoid overflow
