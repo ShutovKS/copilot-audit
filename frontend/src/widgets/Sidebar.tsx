@@ -1,6 +1,5 @@
-import { Play, Layers, Box, TerminalSquare, Info } from 'lucide-react';
+import { Layers, Box, TerminalSquare, Info, Loader2 } from 'lucide-react';
 import { useAppStore } from '../entities/store';
-import { generateTest } from '../shared/api/client';
 
 export const Sidebar = () => {
   const { input, setInput, setCode, setStatus, addLog, clearLogs, status } = useAppStore();
@@ -13,10 +12,6 @@ export const Sidebar = () => {
     setCode('# Generating...');
     addLog('System: Connecting to Agent Stream...');
 
-    // Reuse existing logic via store/api...
-    // For brevity in UI update, invoking same logic as before via click simulation or prop would be better,
-    // but here we just keep the UI structure clean.
-    // Re-implementing basic fetch call for the new UI file:
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     try {
         const response = await fetch(`${API_URL}/generate`, {
@@ -100,7 +95,7 @@ export const Sidebar = () => {
              </div>
           </div>
 
-          {/* Info Block (Optional) */}
+          {/* Info Block */}
           <div className="flex items-start gap-3 p-4 rounded-xl bg-[#2b2d33]/50 border border-white/5">
               <Info size={16} className="text-muted mt-0.5 shrink-0" />
               <div className="space-y-1">
@@ -117,14 +112,17 @@ export const Sidebar = () => {
           <button 
             onClick={handleGenerate}
             disabled={isDisabled}
-            className={`w-full h-12 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 border
+            className={`w-full h-12 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2
                 ${isDisabled 
-                    ? 'bg-[#2b2d33] border-white/5 text-zinc-600 cursor-not-allowed' 
-                    : 'bg-primary border-primary text-[#131418] hover:bg-primaryHover hover:shadow-lg hover:shadow-primary/20'}
+                    ? 'bg-[#2b2d33] text-zinc-500 cursor-not-allowed border border-white/5' 
+                    : 'bg-primary text-[#131418] hover:bg-primaryHover hover:shadow-lg hover:shadow-primary/20'}
             `}
           >
             {isProcessing ? (
-                <span className="animate-pulse">Генерация...</span>
+                <>
+                    <Loader2 size={18} className="animate-spin" />
+                    <span>Генерация...</span>
+                </>
             ) : (
                 <>
                     <TerminalSquare size={18} />

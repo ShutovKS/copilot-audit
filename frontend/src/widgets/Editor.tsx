@@ -1,6 +1,6 @@
 import Editor from '@monaco-editor/react';
 import { useAppStore } from '../entities/store';
-import { Copy, Download, Share2, FileCode, Check } from 'lucide-react';
+import { Copy, Share2, FileCode, Check } from 'lucide-react';
 import { useState } from 'react';
 
 export const CodeEditor = () => {
@@ -73,7 +73,7 @@ export const CodeEditor = () => {
                     lineHeight: 1.6,
                     renderWhitespace: 'selection',
                 }}
-                onMount={(editor, monaco) => {
+                onMount={(_editor, monaco) => {
                     monaco.editor.defineTheme('cloud-rounded', {
                         base: 'vs-dark',
                         inherit: true,
