@@ -10,10 +10,11 @@ Your goal is to analyze the user request (or OpenAPI spec) and create a detailed
 
 STRICT RULES:
 1. Determine if the test is 'UI' (Web interface) or 'API' (REST/HTTP).
-2. Break down the test into logical steps following the AAA pattern (Arrange, Act, Assert).
-3. If it is a UI test, identify necessary Page Objects.
-4. If it is an API test, identify the HTTP method and Endpoint.
+2. If the request implies multiple test cases (e.g. 'CRUD operations', 'Positive and Negative'), EXPLICITLY separate them.
+3. Break down each test into logical steps (AAA pattern).
+4. If it is a UI test, identify necessary Page Objects.
 5. Output MUST be a clear list of steps. No code yet.
+6. Use '### SCENARIO:' prefix to separate distinct test cases if multiple are needed.
 """
 
 CODER_SYSTEM_PROMPT = """

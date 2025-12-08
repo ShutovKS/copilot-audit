@@ -9,6 +9,7 @@ from src.app.services.llm_factory import CloudRuLLMService
 from src.app.agents.prompts import ANALYST_SYSTEM_PROMPT, CODER_SYSTEM_PROMPT, FIXER_SYSTEM_PROMPT
 from src.app.services.tools.linter import CodeValidator
 from src.app.services.parsers.openapi import OpenAPIParser
+from src.app.agents.batch import process_batch
 
 # Initialize Service once
 llm_service = CloudRuLLMService()
@@ -31,14 +32,21 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     response = await llm.ainvoke(messages)
     plan = response.content
     
-    # Simple heuristic to determine type (can be improved with structured output)
+    # Simple heuristic to determine type
     t_type = TestType.API if "api" in state['user_request'].lower() else TestType.UI
+    
+    # Check for batch scenarios
+    scenarios = []
+    if "### SCENARIO:" in plan:
+        raw_scenarios = plan.split("### SCENARIO:")
+        scenarios = [s.strip() for s in raw_scenarios if s.strip()]
     
     return {
         "test_plan": [str(plan)],
+        "scenarios": scenarios if len(scenarios) > 1 else None,
         "test_type": t_type,
         "status": ProcessingStatus.GENERATING,
-        "logs": [f"Analyst: Plan created. Type identified as {t_type}."]
+        "logs": [f"Analyst: Plan created. Identified {len(scenarios) if len(scenarios) > 1 else 1} scenario(s). Type: {t_type}."]
     }
 
 
@@ -98,3 +106,19 @@ async def reviewer_node(state: AgentState) -> Dict[str, Any]:
             "validation_error": error_msg,
             "logs": [f"Reviewer: Validation failed.\n{error_msg[:200]}..."]
         }
+
+async def batch_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Batch Processor: Runs multiple scenarios in parallel.
+    """
+    scenarios = state["scenarios"]
+    results = await process_batch(scenarios)
+    
+    # Combine results into one file for MVP
+    combined_code = "\n\n# ==========================================\n".join(results)
+    
+    return {
+        "generated_code": combined_code,
+        "status": ProcessingStatus.COMPLETED,
+        "logs": [f"Batch: Successfully generated {len(results)} tests in parallel."]
+    }

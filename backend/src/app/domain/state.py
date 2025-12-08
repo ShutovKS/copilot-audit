@@ -28,6 +28,10 @@ class AgentState(TypedDict):
     test_plan: List[str]
     generated_code: str
     
+    # Batch Execution Data
+    scenarios: Optional[List[str]]
+    batch_results: Optional[List[str]]
+    
     # Validation Loop Data
     validation_error: Optional[str]
     
