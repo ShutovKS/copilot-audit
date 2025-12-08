@@ -10,3 +10,13 @@ export const generateTest = async (userRequest: string) => {
   const response = await api.post('/generate', { user_request: userRequest });
   return response.data;
 };
+
+export const exportToGitLab = async (code: string, projectId: string, token: string, url: string) => {
+  const response = await api.post('/export/gitlab', { 
+      code, 
+      project_id: projectId, 
+      token, 
+      url 
+  });
+  return response.data;
+};

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.app.core.config import get_settings
 from src.app.api.endpoints import generation
+from src.app.api.endpoints.export import gitlab
 
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(generation.router, prefix="/api/v1", tags=["Generation"])
+app.include_router(gitlab.router, prefix="/api/v1/export", tags=["Export"])
 
 
 @app.get("/health", tags=["System"])
