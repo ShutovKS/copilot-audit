@@ -78,7 +78,18 @@ export const CodeEditor = () => {
                 theme="vs-dark"
                 value={code}
                 options={{ readOnly: true, minimap: { enabled: false }, fontSize: 13, fontFamily: 'JetBrains Mono, monospace', padding: { top: 20, bottom: 20 } }}
-                onMount={(e, m) => { m.editor.defineTheme('cloud-rounded', { base: 'vs-dark', inherit: true, rules: [], colors: { 'editor.background': '#18191d', 'editor.lineHighlightBackground': '#1f2126' } }); m.editor.setTheme('cloud-rounded'); }}
+                onMount={(_editor, monaco) => { 
+                    monaco.editor.defineTheme('cloud-rounded', { 
+                        base: 'vs-dark', 
+                        inherit: true, 
+                        rules: [], 
+                        colors: { 
+                            'editor.background': '#18191d', 
+                            'editor.lineHighlightBackground': '#1f2126' 
+                        } 
+                    }); 
+                    monaco.editor.setTheme('cloud-rounded'); 
+                }}
             />
         </div>
 

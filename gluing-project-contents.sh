@@ -19,6 +19,7 @@ EXCLUDE_PATTERNS=(
   ".*\.svg"
   ".*\.jpg"
   ".*\.lock"
+  ".*\.sqlite3"
 
   ".github/.*"
   ".husky/.*"
@@ -31,7 +32,7 @@ EXCLUDE_PATTERNS=(
   "package-lock\.json"
   "yarn\.lock"
   "pnpm-lock.yaml"
-  "gluing-project-contents"
+  "gluing-project-contents.sh"
   "openapi.yaml"
 )
 

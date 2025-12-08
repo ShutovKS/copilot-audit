@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Any
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -22,8 +23,26 @@ llm = llm_service.get_model()
 
 async def analyst_node(state: AgentState) -> Dict[str, Any]:
     """
-    Analyst Agent: Parses requirements (Smart Parsing) and determines test strategy.
+    Analyst Agent: Parses requirements, checks history of defects, and determines test strategy.
     """
+    # 0. Load Historical Defects (Context Enhancement)
+    defects_context = ""
+    try:
+        with open("src/app/data/defects.json", "r") as f:
+            defects = json.load(f)
+            # Filter relevant defects (simple keyword matching for MVP)
+            req_lower = state['user_request'].lower()
+            relevant_defects = [d for d in defects if d['component'].lower() in req_lower or (
+                'api' in req_lower and 'api' in d['component'].lower()) or
+                ('calculator' in req_lower and 'calculator' in d['component'].lower())]
+            
+            if relevant_defects:
+                defects_context = "\n\n[HISTORICAL DEFECTS - COVER THESE EDGE CASES]:\n" + "\n".join(
+                    [f"- {d['description']} ({d['severity']})" for d in relevant_defects]
+                )
+    except Exception:
+        pass # Fail silently if file missing
+
     # 1. Check Deduplication (Cache)
     raw_input = state['user_request']
     cached_code = dedup_service.find_similar(raw_input)
@@ -40,7 +59,7 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     
     messages = [
         SystemMessage(content=ANALYST_SYSTEM_PROMPT),
-        HumanMessage(content=f"Context/Requirements:\n{parsed_context}")
+        HumanMessage(content=f"Context/Requirements:\n{parsed_context}{defects_context}")
     ]
     
     response = await llm.ainvoke(messages)

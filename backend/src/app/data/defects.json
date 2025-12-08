@@ -1,0 +1,22 @@
+[
+  {
+    "component": "Calculator",
+    "description": "Negative price when selecting 0 CPU",
+    "severity": "Critical"
+  },
+  {
+    "component": "Calculator",
+    "description": "GPU toggle not resetting on VM type change",
+    "severity": "Medium"
+  },
+  {
+    "component": "API /vms",
+    "description": "500 Error when name contains cyrillic characters",
+    "severity": "High"
+  },
+  {
+    "component": "API /auth",
+    "description": "Token expires faster than stated in ttl",
+    "severity": "Low"
+  }
+]
