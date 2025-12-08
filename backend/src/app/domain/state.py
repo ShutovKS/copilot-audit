@@ -18,6 +18,7 @@ class AgentState(TypedDict):
     
     # Input Data
     user_request: str
+    model_name: str  # Selected LLM Model
     
     # Workflow Control
     status: ProcessingStatus

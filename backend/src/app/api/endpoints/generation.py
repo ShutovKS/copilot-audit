@@ -16,17 +16,19 @@ from src.app.services.llm_factory import CloudRuLLMService
 
 router = APIRouter()
 
-# ... (existing event_generator code) ...
-
 async def event_generator(request: TestGenerationRequest) -> AsyncGenerator[str, None]:
-    # ... (existing code, unchanged) ...
+    """
+    Generates SSE events from the LangGraph execution.
+    """
     async with AsyncSessionLocal() as db:
         history_service = HistoryService(db)
+        
         run_record = await history_service.create_run(request.user_request)
         run_id = run_record.id
         
         initial_state = {
             "user_request": request.user_request,
+            "model_name": request.model_name or "Qwen/Qwen2.5-Coder-32B-Instruct", # Default fallback
             "messages": [],
             "attempts": 0,
             "logs": [f"System: Workflow initialized. Run ID: {run_id}"],
@@ -95,15 +97,11 @@ async def generate_test_stream(request: TestGenerationRequest):
         media_type="text/event-stream"
     )
 
-
 class EnhanceRequest(BaseModel):
     prompt: str
 
 @router.post("/enhance")
 async def enhance_prompt(request: EnhanceRequest):
-    """
-    Uses LLM to improve the user prompt for better test generation.
-    """
     llm_service = CloudRuLLMService()
     llm = llm_service.get_model()
     

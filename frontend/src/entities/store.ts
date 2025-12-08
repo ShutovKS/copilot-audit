@@ -9,6 +9,16 @@ interface EditorSettings {
     wordWrap: 'on' | 'off';
 }
 
+export const AVAILABLE_MODELS = [
+    { id: 'Qwen/Qwen2.5-Coder-32B-Instruct', name: 'Qwen 2.5 Coder (Recommended)' },
+    { id: 'GigaChat/GigaChat-2-Max', name: 'GigaChat 2 Max' },
+    { id: 'ai-sage/GigaChat3-10B-A1.8B', name: 'GigaChat 3 (Free)' },
+    { id: 'MiniMaxAI/MiniMax-M2', name: 'MiniMax M2' },
+    { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B' },
+    { id: 'Qwen/Qwen3-Coder-480B-A35B-Instruct', name: 'Qwen 3 Coder 480B' },
+    { id: 't-tech/T-pro-it-1.0', name: 'T-Pro IT 1.0' }
+];
+
 interface AppState {
   input: string;
   setInput: (val: string) => void;
@@ -32,6 +42,9 @@ interface AppState {
   // Settings
   editorSettings: EditorSettings;
   updateEditorSettings: (settings: Partial<EditorSettings>) => void;
+
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -64,10 +77,16 @@ export const useAppStore = create<AppState>()(
       updateEditorSettings: (newSettings) => set((state) => ({
           editorSettings: { ...state.editorSettings, ...newSettings }
       })),
+
+      selectedModel: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+      setSelectedModel: (selectedModel) => set({ selectedModel }),
     }),
     {
       name: 'app-storage',
-      partialize: (state) => ({ editorSettings: state.editorSettings }), // Persist only settings
+      partialize: (state) => ({ 
+          editorSettings: state.editorSettings, 
+          selectedModel: state.selectedModel 
+      }), 
     }
   )
 );

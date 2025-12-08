@@ -8,6 +8,10 @@ class TestGenerationRequest(BaseModel):
         description="Natural language description of the test case or a URL to Swagger/OpenAPI spec",
         examples=["Verify the login functionality", "https://petstore.swagger.io/v2/swagger.json"]
     )
+    model_name: Optional[str] = Field(
+        None,
+        description="Specific LLM model to use (e.g. Qwen/Qwen2.5-Coder-32B-Instruct)"
+    )
 
 class TestGenerationResponse(BaseModel):
     status: ProcessingStatus = Field(..., description="Current workflow status")

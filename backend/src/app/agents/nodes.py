@@ -13,20 +13,24 @@ from src.app.agents.batch import process_batch
 from src.app.services.deduplication import DeduplicationService
 from src.app.services.defects import DefectAnalysisService
 
+# Initialize Services
 dedup_service = DeduplicationService()
 defect_service = DefectAnalysisService()
 llm_service = CloudRuLLMService()
-llm = llm_service.get_model()
 
 
 async def analyst_node(state: AgentState) -> Dict[str, Any]:
     """
     Analyst Agent: Parses requirements, checks history of defects, and determines test strategy.
     """
+    # Dynamic LLM Init
+    llm = llm_service.get_model(state.get("model_name"))
     raw_input = state['user_request']
     
+    # 0. Load Historical Defects
     defects_context = defect_service.get_relevant_defects(raw_input)
 
+    # 1. Check Deduplication (Cache)
     cached_code = dedup_service.find_similar(raw_input)
     
     if cached_code:
@@ -36,6 +40,7 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
             "logs": ["Analyst: Found exact match in knowledge base (RAG). Skipping generation.", "System: Retrieved verified code from Vector DB."]
         }
 
+    # 2. Smart Parsing Logic
     parsed_context = OpenAPIParser.parse(raw_input, query=raw_input)
     
     messages = [
@@ -46,8 +51,10 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     response = await llm.ainvoke(messages)
     plan = response.content
     
+    # Simple heuristic to determine type
     t_type = TestType.API if "api" in raw_input.lower() else TestType.UI
     
+    # Check for batch scenarios
     scenarios = []
     if "### SCENARIO:" in plan:
         raw_scenarios = plan.split("### SCENARIO:")
@@ -58,7 +65,7 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
         "scenarios": scenarios if len(scenarios) > 1 else None,
         "test_type": t_type,
         "status": ProcessingStatus.GENERATING,
-        "logs": [f"Analyst: Plan created. Identified {len(scenarios) if len(scenarios) > 1 else 1} scenario(s). Type: {t_type}."],
+        "logs": [f"Analyst: Plan created. Identified {len(scenarios) if len(scenarios) > 1 else 1} scenario(s). Type: {t_type}. Used model: {llm.model_name}"],
         "attempts": 0
     }
 
@@ -68,6 +75,8 @@ async def coder_node(state: AgentState) -> Dict[str, Any]:
     Coder Agent: Generates the test code.
     Handles both initial generation and fixing based on errors.
     """
+    # Dynamic LLM Init
+    llm = llm_service.get_model(state.get("model_name"))
     is_fixing = state.get("validation_error") is not None
     
     if is_fixing:

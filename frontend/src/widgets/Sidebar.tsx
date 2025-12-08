@@ -8,7 +8,7 @@ const PRESETS = {
 };
 
 export const Sidebar = () => {
-  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status } = useAppStore();
+  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status, selectedModel } = useAppStore();
   const [isEnhancing, setIsEnhancing] = useState(false);
   
   const handleGenerate = async () => {
@@ -18,14 +18,17 @@ export const Sidebar = () => {
     clearLogs();
     setCode('# Generating...');
     setTestPlan('');
-    addLog('System: Connecting to Agent Stream...');
+    addLog(`System: Connecting to Agent Stream using ${selectedModel}...`);
 
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     try {
         const response = await fetch(`${API_URL}/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_request: input })
+            body: JSON.stringify({ 
+                user_request: input,
+                model_name: selectedModel
+            })
         });
         if (!response.ok) throw new Error("API Error");
         const reader = response.body?.getReader();

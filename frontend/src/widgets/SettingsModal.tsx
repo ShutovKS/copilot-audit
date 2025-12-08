@@ -1,6 +1,6 @@
-import { X, Server, Database, BrainCircuit, CheckCircle2, XCircle, RefreshCw, Loader2, Type, LayoutTemplate } from 'lucide-react';
+import { X, Server, Database, BrainCircuit, CheckCircle2, XCircle, RefreshCw, Loader2, Type, LayoutTemplate, Cpu } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { useAppStore } from '../entities/store';
+import { useAppStore, AVAILABLE_MODELS } from '../entities/store';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -15,10 +15,10 @@ interface SystemStatus {
 }
 
 export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
-    const { editorSettings, updateEditorSettings } = useAppStore();
+    const { editorSettings, updateEditorSettings, selectedModel, setSelectedModel } = useAppStore();
     const [status, setStatus] = useState<SystemStatus | null>(null);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'system' | 'editor'>('system');
+    const [activeTab, setActiveTab] = useState<'system' | 'editor' | 'model'>('system');
 
     const checkHealth = async () => {
         setLoading(true);
@@ -50,13 +50,19 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                      <div className="flex gap-4">
                         <button 
                             onClick={() => setActiveTab('system')}
-                            className={`text-sm font-medium transition-colors ${activeTab === 'system' ? 'text-white' : 'text-muted hover:text-white'}`}
+                            className={`text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === 'system' ? 'text-primary' : 'text-muted hover:text-white'}`}
                         >
                             System
                         </button>
                         <button 
+                            onClick={() => setActiveTab('model')}
+                            className={`text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === 'model' ? 'text-primary' : 'text-muted hover:text-white'}`}
+                        >
+                            Model
+                        </button>
+                        <button 
                             onClick={() => setActiveTab('editor')}
-                            className={`text-sm font-medium transition-colors ${activeTab === 'editor' ? 'text-white' : 'text-muted hover:text-white'}`}
+                            className={`text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === 'editor' ? 'text-primary' : 'text-muted hover:text-white'}`}
                         >
                             Editor
                         </button>
@@ -65,9 +71,9 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 </div>
 
                 <div className="p-6">
-                    {activeTab === 'system' ? (
+                    {activeTab === 'system' && (
                         <div className="space-y-4">
-                            {/* System Status Content (Same as before) */}
+                            {/* System Status Content */}
                             <div className="flex items-center justify-between p-3 bg-[#18191d] rounded-xl border border-white/5">
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500">
@@ -122,7 +128,41 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                                 Refresh Status
                             </button>
                         </div>
-                    ) : (
+                    )}
+
+                    {activeTab === 'model' && (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-muted uppercase mb-3 flex items-center gap-2">
+                                    <Cpu size={14} /> Foundation Model
+                                </label>
+                                <div className="space-y-2">
+                                    {AVAILABLE_MODELS.map(model => (
+                                        <button
+                                            key={model.id}
+                                            onClick={() => setSelectedModel(model.id)}
+                                            className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left
+                                                ${selectedModel === model.id 
+                                                    ? 'bg-primary/10 border-primary text-white' 
+                                                    : 'bg-[#18191d] border-white/5 text-zinc-400 hover:bg-[#2b2d33] hover:text-white'}
+                                            `}
+                                        >
+                                            <span className="text-xs font-medium">{model.name}</span>
+                                            {selectedModel === model.id && <CheckCircle2 size={14} className="text-primary" />}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
+                                <p className="text-[10px] text-blue-300 leading-relaxed">
+                                    Selected model will be used for all subsequent generation tasks. 
+                                    Qwen 2.5 Coder is recommended for best Python code generation results.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'editor' && (
                         <div className="space-y-6">
                             {/* Editor Settings */}
                             <div>

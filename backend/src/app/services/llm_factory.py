@@ -1,3 +1,4 @@
+from typing import Optional
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
@@ -9,16 +10,18 @@ from src.app.core.config import get_settings
 class CloudRuLLMService:
     def __init__(self) -> None:
         self._settings = get_settings()
-        self._llm = ChatOpenAI(
+
+    def get_model(self, model_name: Optional[str] = None) -> BaseChatModel:
+        # Use provided model or fallback to env setting
+        target_model = model_name or self._settings.MODEL_NAME
+        
+        return ChatOpenAI(
             base_url=self._settings.CLOUD_RU_BASE_URL,
             api_key=self._settings.CLOUD_RU_API_KEY.get_secret_value(),
-            model=self._settings.MODEL_NAME,
+            model=target_model,
             temperature=0.1,
             max_retries=3,
         )
-
-    def get_model(self) -> BaseChatModel:
-        return self._llm
 
     @retry(
         stop=stop_after_attempt(3),
@@ -26,6 +29,7 @@ class CloudRuLLMService:
         reraise=True,
     )
     async def check_connection(self) -> str:
+        llm = self.get_model()
         message = HumanMessage(content="Hello, are you ready for testing?")
-        response = await self._llm.ainvoke([message])
+        response = await llm.ainvoke([message])
         return str(response.content)
