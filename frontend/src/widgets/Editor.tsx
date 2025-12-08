@@ -1,11 +1,13 @@
 import Editor from '@monaco-editor/react';
 import { useAppStore } from '../entities/store';
-import { Copy, Share2, FileCode, Check, Loader2, X, GitMerge } from 'lucide-react';
-import { useState } from 'react';
+import { Copy, Check, Loader2, X, GitMerge, FileText, Code2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import { exportToGitLab } from '../shared/api/client';
 
 export const CodeEditor = () => {
-  const { code } = useAppStore();
+  const { code: storeCode, testPlan, editorSettings } = useAppStore();
+  const [displayCode, setDisplayCode] = useState('');
+  const [activeFile, setActiveFile] = useState<'code' | 'plan'>('code');
   const [copied, setCopied] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -16,8 +18,42 @@ export const CodeEditor = () => {
   const [token, setToken] = useState('');
   const [gitlabUrl, setGitlabUrl] = useState('https://gitlab.com');
 
+  // Typewriter Effect Refs
+  // Use ReturnType<typeof setInterval> for cross-environment compatibility (Node/Browser)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentIndexRef = useRef(0);
+  const targetCodeRef = useRef('');
+
+  // Typewriter Logic
+  useEffect(() => {
+      if (storeCode !== targetCodeRef.current) {
+          if (targetCodeRef.current === '' || storeCode.length < targetCodeRef.current.length) {
+             setDisplayCode('');
+             currentIndexRef.current = 0;
+          }
+          targetCodeRef.current = storeCode;
+          if (!intervalRef.current) {
+              intervalRef.current = setInterval(() => {
+                  const target = targetCodeRef.current;
+                  const current = currentIndexRef.current;
+                  if (current < target.length) {
+                      const chunk = target.slice(current, current + 15); // Faster typing
+                      setDisplayCode(prev => prev + chunk);
+                      currentIndexRef.current += 15;
+                  } else {
+                      setDisplayCode(target);
+                      if (intervalRef.current) {
+                          clearInterval(intervalRef.current);
+                          intervalRef.current = null;
+                      }
+                  }
+              }, 5);
+          }
+      }
+  }, [storeCode]);
+
   const handleCopy = () => {
-      navigator.clipboard.writeText(code);
+      navigator.clipboard.writeText(activeFile === 'code' ? storeCode : testPlan);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
   };
@@ -26,7 +62,7 @@ export const CodeEditor = () => {
       if (!projectId || !token) return;
       setIsExporting(true);
       try {
-          const data = await exportToGitLab(code, projectId, token, gitlabUrl);
+          const data = await exportToGitLab(storeCode, projectId, token, gitlabUrl);
           setExportResult({ url: data.mr_url });
       } catch (e) {
           alert('Export failed: ' + e);
@@ -37,63 +73,96 @@ export const CodeEditor = () => {
 
   return (
     <div className="bg-[#1f2126] rounded-2xl h-full flex flex-col overflow-hidden shadow-2xl border border-white/5 relative">
-        {/* Toolbar */}
-        <div className="h-16 flex items-center px-6 justify-between border-b border-white/5">
-            <div className="flex items-center gap-4">
-                <div className="w-8 h-8 rounded-lg bg-[#2b2d33] flex items-center justify-center">
-                    <FileCode size={18} className="text-primary" />
-                </div>
-                <div>
-                    <h3 className="text-sm font-medium text-white">Результат</h3>
-                    <p className="text-[10px] text-muted">generated_test_suite.py</p>
-                </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
+        {/* Header / Tabs */}
+        <div className="h-12 flex items-center px-4 justify-between border-b border-white/5 bg-[#18191d]">
+             {/* Fake File Tabs */}
+             <div className="flex gap-1 h-full pt-2">
+                <button 
+                    onClick={() => setActiveFile('code')}
+                    className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeFile === 'code' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
+                >
+                    <Code2 size={14} className="text-blue-400" /> generated_test.py
+                </button>
+                <button 
+                    onClick={() => setActiveFile('plan')}
+                    className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeFile === 'plan' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
+                >
+                    <FileText size={14} className="text-yellow-400" /> test_plan.md
+                </button>
+             </div>
+
+             <div className="flex items-center gap-2 mb-1">
                 <button 
                     onClick={handleCopy}
-                    className="flex items-center gap-2 p-1.5 px-3 hover:bg-[#2b2d33] rounded-lg text-muted hover:text-white transition-colors"
+                    className="p-1.5 hover:bg-[#2b2d33] rounded-md text-muted hover:text-white transition-colors"
                     title="Copy"
                 >
-                    {copied ? <Check size={18} className="text-success" /> : <Copy size={18} />}
-                    {copied && <span className="text-xs text-success">Copied</span>}
+                    {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
                 </button>
-                
                 <button 
                     onClick={() => setIsModalOpen(true)}
-                    disabled={!code}
-                    className="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 bg-[#2b2d33] text-white hover:bg-[#363840]"
+                    disabled={!storeCode}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-md text-[10px] font-bold transition-colors"
                 >
-                    <Share2 size={14} />
-                    <span>Export</span>
+                    <GitMerge size={12} /> Export
                 </button>
-            </div>
-        </div>
-        
-        {/* Editor */}
-        <div className="flex-1 relative bg-[#18191d] m-4 mt-0 rounded-xl overflow-hidden border border-white/5">
-             <Editor
-                height="100%"
-                defaultLanguage="python"
-                theme="vs-dark"
-                value={code}
-                options={{ readOnly: true, minimap: { enabled: false }, fontSize: 13, fontFamily: 'JetBrains Mono, monospace', padding: { top: 20, bottom: 20 } }}
-                onMount={(_editor, monaco) => { 
-                    monaco.editor.defineTheme('cloud-rounded', { 
-                        base: 'vs-dark', 
-                        inherit: true, 
-                        rules: [], 
-                        colors: { 
-                            'editor.background': '#18191d', 
-                            'editor.lineHighlightBackground': '#1f2126' 
-                        } 
-                    }); 
-                    monaco.editor.setTheme('cloud-rounded'); 
-                }}
-            />
+             </div>
         </div>
 
-        {/* GitLab Modal */}
+        <div className="flex-1 flex min-h-0">
+            {/* Sidebar File Explorer (Mock) */}
+            <div className="w-48 border-r border-white/5 bg-[#18191d] p-3 hidden md:block">
+                <h4 className="text-[10px] font-bold text-muted uppercase tracking-wider mb-3">Explorer</h4>
+                <div className="space-y-1">
+                    <div 
+                        onClick={() => setActiveFile('code')}
+                        className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs ${activeFile === 'code' ? 'bg-[#2b2d33] text-white' : 'text-zinc-400 hover:text-white hover:bg-[#2b2d33]/50'}`}
+                    >
+                        <Code2 size={14} className="text-blue-400" />
+                        <span>test_suite.py</span>
+                    </div>
+                    <div 
+                        onClick={() => setActiveFile('plan')}
+                        className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs ${activeFile === 'plan' ? 'bg-[#2b2d33] text-white' : 'text-zinc-400 hover:text-white hover:bg-[#2b2d33]/50'}`}
+                    >
+                        <FileText size={14} className="text-yellow-400" />
+                        <span>test_plan.md</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Editor Content */}
+            <div className="flex-1 bg-[#1f2126] relative">
+                 <Editor
+                    height="100%"
+                    defaultLanguage={activeFile === 'code' ? 'python' : 'markdown'}
+                    theme="vs-dark"
+                    value={activeFile === 'code' ? displayCode : (testPlan || '*Test plan not generated yet*')}
+                    options={{ 
+                        readOnly: true, 
+                        minimap: { enabled: editorSettings.minimap }, 
+                        fontSize: editorSettings.fontSize, 
+                        wordWrap: editorSettings.wordWrap,
+                        fontFamily: 'JetBrains Mono, monospace', 
+                        padding: { top: 20, bottom: 20 },
+                    }}
+                    onMount={(_editor, monaco) => { 
+                        monaco.editor.defineTheme('cloud-rounded', { 
+                            base: 'vs-dark', 
+                            inherit: true, 
+                            rules: [], 
+                            colors: { 
+                                'editor.background': '#1f2126', 
+                                'editor.lineHighlightBackground': '#2b2d33' 
+                            } 
+                        }); 
+                        monaco.editor.setTheme('cloud-rounded'); 
+                    }}
+                />
+            </div>
+        </div>
+
+        {/* Modal code remains same... */}
         {isModalOpen && (
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div className="bg-[#1f2126] w-full max-w-md rounded-2xl border border-white/10 shadow-2xl p-6">

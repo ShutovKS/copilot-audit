@@ -4,7 +4,22 @@ from src.app.services.tools.linter import CodeValidator
 
 @pytest.fixture
 def valid_code():
-    return "def test_example():\n    assert True"
+    return """
+import allure
+import pytest
+
+@allure.feature("Login")
+def test_example():
+    with allure.step("Check boolean"):
+        assert True
+"""
+
+@pytest.fixture
+def code_without_allure():
+    return """
+def test_example():
+    assert True
+"""
 
 @pytest.fixture
 def syntax_error_code():
@@ -15,6 +30,12 @@ def test_validate_syntax_error(syntax_error_code: str) -> None:
     is_valid, message = CodeValidator.validate(syntax_error_code)
     assert is_valid is False
     assert "AST Syntax Error" in message
+
+def test_validate_allure_missing(code_without_allure: str) -> None:
+    """Test that code without Allure decorators fails validation."""
+    is_valid, message = CodeValidator.validate(code_without_allure)
+    assert is_valid is False
+    assert "Allure Compliance Error" in message
 
 @patch("src.app.services.tools.linter.subprocess.run")
 def test_validate_ruff_error(mock_run: MagicMock, valid_code: str) -> None:
@@ -34,9 +55,11 @@ def test_validate_ruff_error(mock_run: MagicMock, valid_code: str) -> None:
 @patch("src.app.services.tools.linter.subprocess.run")
 def test_validate_pytest_collection_error(mock_run: MagicMock, valid_code: str) -> None:
     """Test that pytest collection errors are caught."""
+    # Mock Ruff success
     mock_ruff_response = MagicMock()
     mock_ruff_response.returncode = 0
     
+    # Mock Pytest failure
     mock_pytest_response = MagicMock()
     mock_pytest_response.returncode = 1
     mock_pytest_response.stdout = "Pytest collection failed"
@@ -52,6 +75,7 @@ def test_validate_pytest_collection_error(mock_run: MagicMock, valid_code: str) 
 @patch("src.app.services.tools.linter.subprocess.run")
 def test_validate_success(mock_run: MagicMock, valid_code: str) -> None:
     """Test successful validation."""
+    # Mock both processes succeeding
     mock_success = MagicMock()
     mock_success.returncode = 0
     
