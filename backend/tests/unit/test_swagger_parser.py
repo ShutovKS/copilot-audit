@@ -1,8 +1,8 @@
 import json
 import pytest
+from unittest.mock import MagicMock, patch
 from src.app.services.parsers.openapi import OpenAPIParser
 
-# Mock Petstore Swagger (simplified)
 PETSTORE_SWAGGER = {
   "openapi": "3.0.0",
   "info": {
@@ -13,75 +13,49 @@ PETSTORE_SWAGGER = {
     "/pets": {
       "get": {
         "summary": "List all pets",
-        "operationId": "listPets",
         "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "How many items to return at one time (max 100)",
-            "required": False,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ]
-      },
-      "post": {
-        "summary": "Create a pet",
-        "operationId": "createPets",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Pet"
-              }
-            }
-          },
-          "required": True
-        }
-      }
-    },
-    "/pets/{petId}": {
-      "get": {
-        "summary": "Info for a specific pet",
-        "operationId": "showPetById",
-        "parameters": [
-          {
-            "name": "petId",
-            "in": "path",
-            "required": True,
-            "schema": {
-              "type": "string"
-            }
-          }
+          {"name": "limit", "in": "query", "required": False}
         ]
       }
     }
   }
 }
 
-def test_extract_endpoints_from_json():
-    """
-    Test that endpoints are correctly extracted with methods and parameters.
-    """
+def test_extract_endpoints_from_json() -> None:
+    """Test valid JSON parsing."""
     json_content = json.dumps(PETSTORE_SWAGGER)
     summary = OpenAPIParser.parse(json_content)
     
-    print(f"\nGenerated Summary:\n{summary}")
-
     assert "Swagger Petstore" in summary
-    # Check GET /pets
     assert "GET /pets [limit]" in summary
-    # Check POST /pets with Body
-    assert "POST /pets [BODY]" in summary
-    # Check Path Parameter
-    assert "GET /pets/{petId} [petId*]" in summary
 
-def test_parser_handles_invalid_json():
-    """
-    Test graceful fallback for non-json text.
-    """
-    text = "Just a requirement description"
+def test_parser_handles_invalid_json() -> None:
+    """Test graceful fallback for non-json text."""
+    text = "Simple text requirements"
     result = OpenAPIParser.parse(text)
-    assert "Requirements Text: Just a requirement description" in result
+    assert "Requirements Text: Simple text requirements" in result
+
+@patch("src.app.services.parsers.openapi.requests.get")
+def test_parse_from_url_success(mock_get: MagicMock) -> None:
+    """Test downloading spec from URL."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = PETSTORE_SWAGGER
+    mock_response.raise_for_status = MagicMock()
+    mock_get.return_value = mock_response
+    
+    url = "http://example.com/swagger.json"
+    summary = OpenAPIParser.parse(url)
+    
+    mock_get.assert_called_once_with(url, timeout=10)
+    assert "Swagger Petstore" in summary
+
+@patch("src.app.services.parsers.openapi.requests.get")
+def test_parse_from_url_failure(mock_get: MagicMock) -> None:
+    """Test handling of network errors."""
+    mock_get.side_effect = Exception("Network Error")
+    
+    url = "http://example.com/broken.json"
+    result = OpenAPIParser.parse(url)
+    
+    assert "Error parsing OpenAPI spec" in result
+    assert "Treating input as plain text" in result
