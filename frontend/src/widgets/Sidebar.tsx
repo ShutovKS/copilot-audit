@@ -1,5 +1,10 @@
-import { Layers, Box, TerminalSquare, Info, Loader2 } from 'lucide-react';
+import { Layers, Box, TerminalSquare, Info, Loader2, Zap } from 'lucide-react';
 import { useAppStore } from '../entities/store';
+
+const PRESETS = {
+    UI: `Напиши UI тест на Python (Playwright) для калькулятора Cloud.ru (https://cloud.ru/calculator). \nСценарий:\n1. Открыть страницу.\n2. Добавить сервис 'Виртуальная машина'.\n3. Изменить количество CPU на 4.\n4. Проверить, что цена изменилась.`,
+    API: `Сгенерируй API тест для методов GET /v1/instances и POST /v1/instances.\nИспользуй базовый URL: https://compute.api.cloud.ru\nПроверь, что в ответе приходит список машин и статус код 200.\nДобавь негативный тест на 401 (без токена).`
+};
 
 export const Sidebar = () => {
   const { input, setInput, setCode, setStatus, addLog, clearLogs, status } = useAppStore();
@@ -80,6 +85,25 @@ export const Sidebar = () => {
                     disabled={isProcessing}
                 />
             </div>
+          </div>
+
+          {/* Presets */}
+          <div className="space-y-2">
+             <label className="text-xs font-medium text-muted">Быстрые сценарии</label>
+             <div className="flex gap-2">
+                 <button 
+                    onClick={() => setInput(PRESETS.UI)}
+                    className="flex-1 px-3 py-2 bg-[#2b2d33] hover:bg-[#363840] rounded-lg text-[10px] text-white flex items-center justify-center gap-1 transition-colors"
+                 >
+                     <Zap size={12} className="text-yellow-500" /> UI Калькулятор
+                 </button>
+                 <button 
+                    onClick={() => setInput(PRESETS.API)}
+                    className="flex-1 px-3 py-2 bg-[#2b2d33] hover:bg-[#363840] rounded-lg text-[10px] text-white flex items-center justify-center gap-1 transition-colors"
+                 >
+                     <Box size={12} className="text-blue-500" /> API Compute
+                 </button>
+             </div>
           </div>
 
           {/* Selector Block */}

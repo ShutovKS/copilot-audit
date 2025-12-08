@@ -13,10 +13,8 @@ from src.app.services.parsers.openapi import OpenAPIParser
 from src.app.agents.batch import process_batch
 from src.app.services.deduplication import DeduplicationService
 
-# Initialize Deduplication Service
 dedup_service = DeduplicationService()
 
-# Initialize Service once
 llm_service = CloudRuLLMService()
 llm = llm_service.get_model()
 
@@ -25,12 +23,10 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     """
     Analyst Agent: Parses requirements, checks history of defects, and determines test strategy.
     """
-    # 0. Load Historical Defects (Context Enhancement)
     defects_context = ""
     try:
         with open("src/app/data/defects.json", "r") as f:
             defects = json.load(f)
-            # Filter relevant defects (simple keyword matching for MVP)
             req_lower = state['user_request'].lower()
             relevant_defects = [d for d in defects if d['component'].lower() in req_lower or (
                 'api' in req_lower and 'api' in d['component'].lower()) or
@@ -41,9 +37,8 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
                     [f"- {d['description']} ({d['severity']})" for d in relevant_defects]
                 )
     except Exception:
-        pass # Fail silently if file missing
+        pass
 
-    # 1. Check Deduplication (Cache)
     raw_input = state['user_request']
     cached_code = dedup_service.find_similar(raw_input)
     
@@ -54,8 +49,7 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
             "logs": ["Analyst: Found exact match in knowledge base (RAG). Skipping generation.", "System: Retrieved verified code from Vector DB."]
         }
 
-    # 2. Smart Parsing Logic
-    parsed_context = OpenAPIParser.parse(raw_input)
+    parsed_context = OpenAPIParser.parse(raw_input, query=raw_input)
     
     messages = [
         SystemMessage(content=ANALYST_SYSTEM_PROMPT),
@@ -65,10 +59,8 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     response = await llm.ainvoke(messages)
     plan = response.content
     
-    # Simple heuristic to determine type
     t_type = TestType.API if "api" in state['user_request'].lower() else TestType.UI
     
-    # Check for batch scenarios
     scenarios = []
     if "### SCENARIO:" in plan:
         raw_scenarios = plan.split("### SCENARIO:")
@@ -79,7 +71,8 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
         "scenarios": scenarios if len(scenarios) > 1 else None,
         "test_type": t_type,
         "status": ProcessingStatus.GENERATING,
-        "logs": [f"Analyst: Plan created. Identified {len(scenarios) if len(scenarios) > 1 else 1} scenario(s). Type: {t_type}."]
+        "logs": [f"Analyst: Plan created. Identified {len(scenarios) if len(scenarios) > 1 else 1} scenario(s). Type: {t_type}."],
+        "attempts": 0
     }
 
 
@@ -109,12 +102,11 @@ async def coder_node(state: AgentState) -> Dict[str, Any]:
     response = await llm.ainvoke(messages)
     code = str(response.content)
     
-    # Clean up markdown if LLM adds it despite instructions
     code = code.replace("```python", "").replace("```", "").strip()
 
     return {
         "generated_code": code,
-        "validation_error": None, # Reset error as we have a new candidate
+        "validation_error": None,
         "status": ProcessingStatus.VALIDATING,
         "attempts": state.get("attempts", 0) + 1,
         "logs": [log_msg]
@@ -129,8 +121,6 @@ async def reviewer_node(state: AgentState) -> Dict[str, Any]:
     is_valid, error_msg = CodeValidator.validate(code)
 
     if is_valid:
-        # Save successful generation to Vector DB for future use
-        # We use the original user request as the key
         dedup_service.save(state['user_request'], code)
         
         return {
@@ -151,7 +141,6 @@ async def batch_node(state: AgentState) -> Dict[str, Any]:
     scenarios = state["scenarios"]
     results = await process_batch(scenarios)
     
-    # Combine results into one file for MVP
     combined_code = "\n\n# ==========================================\n".join(results)
     
     return {

@@ -1,6 +1,6 @@
 import json
 import requests
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 class OpenAPIParser:
     """
@@ -9,35 +9,33 @@ class OpenAPIParser:
     """
 
     @staticmethod
-    def parse(source: str) -> str:
+    def parse(source: str, query: Optional[str] = None) -> str:
         """
         Parses a URL or JSON string and returns a textual summary.
+        Query: User request to filter relevant endpoints.
         """
         spec = {}
         
         try:
-            # 1. Try treating as URL
             if source.startswith("http"):
                 response = requests.get(source, timeout=10)
                 response.raise_for_status()
                 spec = response.json()
-            # 2. Try treating as JSON string
             elif source.strip().startswith("{"):
                 spec = json.loads(source)
             else:
-                # Not a spec, return original text
                 return f"Requirements Text: {source}"
 
-            return OpenAPIParser._summarize_spec(spec)
+            return OpenAPIParser._summarize_spec(spec, query)
 
         except Exception as e:
-            # Log error internally, but return valid text so flow doesn't break
             return f"Error parsing OpenAPI spec: {str(e)}. Treating input as plain text requirements: {source}"
 
     @staticmethod
-    def _summarize_spec(spec: Dict[str, Any]) -> str:
+    def _summarize_spec(spec: Dict[str, Any], query: Optional[str] = None) -> str:
         """
         Extracts Paths, Methods, and Summaries.
+        If query is provided, prioritizes endpoints containing query keywords.
         """
         summary = ["OpenAPI Specification Summary:"]
         
@@ -45,7 +43,13 @@ class OpenAPIParser:
         summary.append(f"API Title: {title}")
         
         paths = spec.get("paths", {})
-        count = 0
+        
+        keywords = []
+        if query:
+            keywords = [w.lower() for w in query.split() if len(w) > 3]
+
+        relevant_endpoints = []
+        other_endpoints = []
         
         for path, methods in paths.items():
             for method, details in methods.items():
@@ -54,7 +58,6 @@ class OpenAPIParser:
                 
                 desc = details.get("summary") or details.get("description", "No description")
                 
-                # Extract parameters
                 params = []
                 if "parameters" in details:
                     for p in details["parameters"]:
@@ -62,17 +65,32 @@ class OpenAPIParser:
                         required = "*" if p.get("required") else ""
                         params.append(f"{name}{required}")
                 
-                # Extract request body hint
                 if "requestBody" in details:
                     params.append("BODY")
 
                 param_str = f"[{', '.join(params)}]" if params else ""
-                summary.append(f"- {method.upper()} {path} {param_str} : {desc}")
-                count += 1
+                line = f"- {method.upper()} {path} {param_str} : {desc}"
                 
-                # Limit context for MVP to first 20 endpoints to avoid overflow
-                if count >= 20:
-                    summary.append("... (Truncated for context limit)")
-                    return "\n".join(summary)
+                is_relevant = False
+                if keywords:
+                    content_to_search = (path + " " + desc).lower()
+                    if any(k in content_to_search for k in keywords):
+                        is_relevant = True
+                
+                if is_relevant:
+                    relevant_endpoints.append(line)
+                else:
+                    other_endpoints.append(line)
         
+        final_list = relevant_endpoints
+        remaining_slots = 25 - len(final_list)
+        
+        if remaining_slots > 0:
+            final_list.extend(other_endpoints[:remaining_slots])
+            
+        summary.extend(final_list)
+        
+        if len(relevant_endpoints) + len(other_endpoints) > 25:
+             summary.append("... (Truncated for context limit, optimized by relevance)")
+
         return "\n".join(summary)
