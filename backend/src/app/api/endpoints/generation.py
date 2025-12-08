@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from src.app.api.models import TestGenerationRequest
-from src.app.agents.graph import agent_graph
+from src.app.agents.graph import agent_graph, checkpointer
 from src.app.domain.enums import ProcessingStatus
 from src.app.core.database import get_db, AsyncSessionLocal
 from src.app.services.history import HistoryService
@@ -17,18 +17,21 @@ from src.app.services.llm_factory import CloudRuLLMService
 router = APIRouter()
 
 async def event_generator(request: TestGenerationRequest) -> AsyncGenerator[str, None]:
-    """
-    Generates SSE events from the LangGraph execution.
-    """
+    # Ensure DB tables for checkpointer exist
+    await checkpointer.setup()
+
     async with AsyncSessionLocal() as db:
         history_service = HistoryService(db)
         
         run_record = await history_service.create_run(request.user_request)
         run_id = run_record.id
         
+        # Use run_id as thread_id for persistence
+        config = {"configurable": {"thread_id": str(run_id)}}
+        
         initial_state = {
             "user_request": request.user_request,
-            "model_name": request.model_name or "Qwen/Qwen2.5-Coder-32B-Instruct", # Default fallback
+            "model_name": request.model_name or "Qwen/Qwen2.5-Coder-32B-Instruct",
             "messages": [],
             "attempts": 0,
             "logs": [f"System: Workflow initialized. Run ID: {run_id}"],
@@ -44,7 +47,7 @@ async def event_generator(request: TestGenerationRequest) -> AsyncGenerator[str,
         final_type = None
 
         try:
-            async for output in agent_graph.astream(initial_state):
+            async for output in agent_graph.astream(initial_state, config=config):
                 for node_name, state_update in output.items():
                     if "logs" in state_update:
                         for log_msg in state_update["logs"]:

@@ -3,33 +3,41 @@ from chromadb.utils import embedding_functions
 import uuid
 from typing import Optional
 import logging
+from src.app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 class DeduplicationService:
     """
-    Service for semantic deduplication of test cases using Vector Search (RAG).
-    Stores successful test cases and retrieves them if a similar request comes in.
+    Service for semantic deduplication using ChromaDB (Server Mode).
     """
     
-    def __init__(self, persistence_path: str = "./chroma_db"):
-        self.client = chromadb.PersistentClient(path=persistence_path)
+    def __init__(self):
+        self.settings = get_settings()
         
-        # Use default lightweight embedding model (all-MiniLM-L6-v2)
-        self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
-        
-        self.collection = self.client.get_or_create_collection(
-            name="test_cases_v1",
-            embedding_function=self.embedding_fn,
-            metadata={"hnsw:space": "cosine"}  # Use Cosine similarity
-        )
+        try:
+            # Connect to ChromaDB container
+            self.client = chromadb.HttpClient(
+                host=self.settings.CHROMA_HOST,
+                port=self.settings.CHROMA_PORT
+            )
+            
+            self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+            
+            self.collection = self.client.get_or_create_collection(
+                name="test_cases_v1",
+                embedding_function=self.embedding_fn,
+                metadata={"hnsw:space": "cosine"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to connect to ChromaDB: {e}")
+            # Fallback for tests/local without docker
+            self.collection = None
 
     def find_similar(self, query: str, threshold: float = 0.2) -> Optional[str]:
-        """
-        Search for a similar existing test case.
-        Threshold: Distance score (lower is better for cosine distance in Chroma).
-        0.0 = identical, 0.2 = very similar.
-        """
+        if not self.collection:
+            return None
+            
         try:
             results = self.collection.query(
                 query_texts=[query],
@@ -54,9 +62,9 @@ class DeduplicationService:
             return None
 
     def save(self, query: str, code: str) -> None:
-        """
-        Save a generated test case to the vector database.
-        """
+        if not self.collection:
+            return
+            
         try:
             self.collection.add(
                 documents=[code],

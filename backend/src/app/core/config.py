@@ -14,8 +14,15 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "TestOps Evolution Forge"
 
     CLOUD_RU_API_KEY: SecretStr
-    CLOUD_RU_BASE_URL: str = "https://api.evolution.cloud.ru/v1"
-    MODEL_NAME: str = "Qwen2.5-Coder"
+    CLOUD_RU_BASE_URL: str = "https://foundation-models.api.cloud.ru/v1"
+    MODEL_NAME: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
+
+    # Database
+    DATABASE_URL: str = "postgresql+asyncpg://testops:testops@db:5432/testops"
+    
+    # Vector DB
+    CHROMA_HOST: str = "chromadb"
+    CHROMA_PORT: int = 8000
 
     model_config = SettingsConfigDict(
         env_file=".env",
