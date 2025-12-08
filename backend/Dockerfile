@@ -7,20 +7,31 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     build-essential \
+    ca-certificates \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
 ENV POETRY_HOME="/opt/poetry"
 ENV PATH="$POETRY_HOME/bin:$PATH"
+ENV PIP_DEFAULT_TIMEOUT=300
+ENV POETRY_HTTP_TIMEOUT=300
+ENV POETRY_NO_INTERACTION=1
 RUN curl -sSL https://install.python-poetry.org | python3 -
+
+RUN python -m pip install --upgrade pip setuptools wheel
 
 # Copy dependency files
 COPY pyproject.toml poetry.lock* ./
 
 # Install dependencies to a local folder
-# FIX: Replaced deprecated --no-dev with --without dev
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-root --without dev --no-interaction --no-ansi
+    && for i in 1 2 3; do \
+        poetry install --no-root --without dev --no-interaction --no-ansi && break || { \
+            echo "poetry install failed (attempt $i), retrying..."; \
+            sleep $((i * 5)); \
+        }; \
+    done
 
 # Stage 2: Runtime
 FROM python:3.11-slim
@@ -40,12 +51,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy installed python packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-
-# NOTE: We intentionally SKIP 'playwright install' (browsers) here.
-# Requirement: Image size < 500MB.
-# Since our Agent only generates and validates (pytest --collect-only) code,
-# we don't need the heavy Chromium binary (~300MB) in this container.
-# The compiled python bytecode and libraries are enough for static validation.
 
 # Copy Application Code
 COPY src ./src

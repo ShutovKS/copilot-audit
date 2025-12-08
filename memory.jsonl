@@ -1,0 +1,25 @@
+{"type":"entity","name":"TestOps Evolution Forge","entityType":"Project","observations":["A multi-agent AI system for automated test generation.","Based on Cloud.ru Evolution Foundation Model.","Consists of a Python Backend and React Frontend.","Status: MVP Complete.","Features: UI/API test generation, Self-correction loop, Batch processing, Streaming logs."]}
+{"type":"entity","name":"Backend","entityType":"Module","observations":["Written in Python 3.11 using FastAPI and LangGraph.","Located in `backend/` directory.","Uses Poetry for dependency management.","Implements SSE for streaming logs."]}
+{"type":"entity","name":"Frontend","entityType":"Module","observations":["Written in React 18 + TypeScript + Vite.","Located in `frontend/` directory.","Uses Tailwind CSS v4 for styling (Cloud.ru dark theme).","Uses Monaco Editor for code display.","Communicates with backend via `/api/v1/generate`."]}
+{"type":"entity","name":"Analyst Agent","entityType":"Component","observations":["Responsible for parsing requirements and creating test plans.","Uses `OpenAPIParser` for smart Swagger parsing.","Supports splitting tasks into scenarios for batch processing."]}
+{"type":"entity","name":"Coder Agent","entityType":"Component","observations":["Generates Python code (Pytest + Playwright/Requests).","Uses Few-Shot Prompting to follow Page Object Model patterns."]}
+{"type":"entity","name":"Reviewer Agent","entityType":"Component","observations":["Validates generated code using `ast`, `ruff`, and `pytest --collect-only`.","Triggers a self-correction loop if errors are found."]}
+{"type":"entity","name":"Batch Processor","entityType":"Component","observations":["Handles parallel execution of multiple test scenarios.","Uses `asyncio.gather` and `Semaphore` for rate limiting.","Located in `backend/src/app/agents/batch.py`."]}
+{"type":"entity","name":"Evolution UI","entityType":"Design System","observations":["Custom dark theme matching Cloud.ru platform.","Colors: Background #131418, Primary #00b67a.","Implemented using Tailwind CSS."]}
+{"type":"entity","name":"Security Strategy","entityType":"Architecture","observations":["Uses Docker containers for isolation.","Performs Static Analysis (AST, Ruff) before execution.","Uses `pytest --collect-only` to validate code structure without running payload side-effects."]}
+{"type":"entity","name":"SSE Protocol","entityType":"Architecture","observations":["Server-Sent Events used for streaming generation progress.","Custom JSON Schema: {type: 'log'|'code'|'status'|'error', content: string}.","Allows real-time feedback loop visualization on Frontend."]}
+{"type":"entity","name":"Batch Architecture","entityType":"Pattern","observations":["Hybrid Graph Pattern: Main StateGraph routes based on Analyst output.","Parallel Execution: Uses `asyncio.gather` with `Semaphore(5)` for rate limiting.","Scalability: Handles 5-10 concurrent test generations."]}
+{"type":"entity","name":"Frontend Architecture","entityType":"Architecture","observations":["Three-Pane Dashboard Layout (Sidebar, Editor, Terminal).","State Management: Zustand stores logs, code, and UI state.","Editor: Monaco Editor with custom 'cloud-ru-dark' theme matching brand colors."]}
+{"type":"entity","name":"Current Limitations","entityType":"Status","observations":["No persistent database (In-Memory state only).","No User Authentication (Single-user MVP).","GitLab Integration is mocked (UI only).","Unit Test coverage is partial."]}
+{"type":"relation","from":"TestOps Evolution Forge","to":"Backend","relationType":"contains"}
+{"type":"relation","from":"TestOps Evolution Forge","to":"Frontend","relationType":"contains"}
+{"type":"relation","from":"Backend","to":"Analyst Agent","relationType":"orchestrates"}
+{"type":"relation","from":"Backend","to":"Coder Agent","relationType":"orchestrates"}
+{"type":"relation","from":"Backend","to":"Reviewer Agent","relationType":"orchestrates"}
+{"type":"relation","from":"Backend","to":"Batch Processor","relationType":"uses"}
+{"type":"relation","from":"Frontend","to":"Evolution UI","relationType":"implements"}
+{"type":"relation","from":"TestOps Evolution Forge","to":"Security Strategy","relationType":"implements"}
+{"type":"relation","from":"TestOps Evolution Forge","to":"SSE Protocol","relationType":"uses"}
+{"type":"relation","from":"Backend","to":"Batch Architecture","relationType":"implements"}
+{"type":"relation","from":"Frontend","to":"SSE Protocol","relationType":"consumes"}
+{"type":"relation","from":"TestOps Evolution Forge","to":"Current Limitations","relationType":"has"}

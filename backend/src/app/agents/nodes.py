@@ -10,6 +10,10 @@ from src.app.agents.prompts import ANALYST_SYSTEM_PROMPT, CODER_SYSTEM_PROMPT, F
 from src.app.services.tools.linter import CodeValidator
 from src.app.services.parsers.openapi import OpenAPIParser
 from src.app.agents.batch import process_batch
+from src.app.services.deduplication import DeduplicationService
+
+# Initialize Deduplication Service
+dedup_service = DeduplicationService()
 
 # Initialize Service once
 llm_service = CloudRuLLMService()
@@ -20,8 +24,18 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     """
     Analyst Agent: Parses requirements (Smart Parsing) and determines test strategy.
     """
-    # Smart Parsing Logic
+    # 1. Check Deduplication (Cache)
     raw_input = state['user_request']
+    cached_code = dedup_service.find_similar(raw_input)
+    
+    if cached_code:
+        return {
+            "generated_code": cached_code,
+            "status": ProcessingStatus.COMPLETED,
+            "logs": ["Analyst: Found exact match in knowledge base (RAG). Skipping generation.", "System: Retrieved verified code from Vector DB."]
+        }
+
+    # 2. Smart Parsing Logic
     parsed_context = OpenAPIParser.parse(raw_input)
     
     messages = [
@@ -96,9 +110,13 @@ async def reviewer_node(state: AgentState) -> Dict[str, Any]:
     is_valid, error_msg = CodeValidator.validate(code)
 
     if is_valid:
+        # Save successful generation to Vector DB for future use
+        # We use the original user request as the key
+        dedup_service.save(state['user_request'], code)
+        
         return {
             "status": ProcessingStatus.COMPLETED,
-            "logs": ["Reviewer: Code passed all checks! Ready for dispatch."]
+            "logs": ["Reviewer: Code passed all checks! Ready for dispatch.", "System: Saved to Knowledge Base."]
         }
     else:
         return {

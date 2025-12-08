@@ -7,8 +7,11 @@ from src.app.agents.nodes import analyst_node, coder_node, reviewer_node, batch_
 
 def route_after_analyst(state: AgentState) -> str:
     """
-    Decides whether to go to single Coder or Batch Processor.
+    Decides whether to go to single Coder, Batch Processor, or Finish (if cached).
     """
+    if state.get("status") == ProcessingStatus.COMPLETED:
+        return "end"
+        
     if state.get("scenarios") and len(state["scenarios"]) > 1:
         return "batch"
     return "coder"
@@ -49,7 +52,8 @@ def build_graph():
         route_after_analyst,
         {
             "coder": "coder",
-            "batch": "batch"
+            "batch": "batch",
+            "end": END
         }
     )
     
