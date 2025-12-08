@@ -2,7 +2,6 @@ import json
 from typing import Dict, Any
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_core.output_parsers import StrOutputParser
 
 from src.app.domain.state import AgentState
 from src.app.domain.enums import ProcessingStatus, TestType
@@ -12,9 +11,10 @@ from src.app.services.tools.linter import CodeValidator
 from src.app.services.parsers.openapi import OpenAPIParser
 from src.app.agents.batch import process_batch
 from src.app.services.deduplication import DeduplicationService
+from src.app.services.defects import DefectAnalysisService
 
 dedup_service = DeduplicationService()
-
+defect_service = DefectAnalysisService()
 llm_service = CloudRuLLMService()
 llm = llm_service.get_model()
 
@@ -23,23 +23,10 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     """
     Analyst Agent: Parses requirements, checks history of defects, and determines test strategy.
     """
-    defects_context = ""
-    try:
-        with open("src/app/data/defects.json", "r") as f:
-            defects = json.load(f)
-            req_lower = state['user_request'].lower()
-            relevant_defects = [d for d in defects if d['component'].lower() in req_lower or (
-                'api' in req_lower and 'api' in d['component'].lower()) or
-                ('calculator' in req_lower and 'calculator' in d['component'].lower())]
-            
-            if relevant_defects:
-                defects_context = "\n\n[HISTORICAL DEFECTS - COVER THESE EDGE CASES]:\n" + "\n".join(
-                    [f"- {d['description']} ({d['severity']})" for d in relevant_defects]
-                )
-    except Exception:
-        pass
-
     raw_input = state['user_request']
+    
+    defects_context = defect_service.get_relevant_defects(raw_input)
+
     cached_code = dedup_service.find_similar(raw_input)
     
     if cached_code:
@@ -59,7 +46,7 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     response = await llm.ainvoke(messages)
     plan = response.content
     
-    t_type = TestType.API if "api" in state['user_request'].lower() else TestType.UI
+    t_type = TestType.API if "api" in raw_input.lower() else TestType.UI
     
     scenarios = []
     if "### SCENARIO:" in plan:
@@ -122,7 +109,6 @@ async def reviewer_node(state: AgentState) -> Dict[str, Any]:
 
     if is_valid:
         dedup_service.save(state['user_request'], code)
-        
         return {
             "status": ProcessingStatus.COMPLETED,
             "logs": ["Reviewer: Code passed all checks! Ready for dispatch.", "System: Saved to Knowledge Base."]

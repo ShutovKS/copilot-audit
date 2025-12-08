@@ -1,57 +1,62 @@
 # TestOps Evolution Forge
 
-**TestOps Evolution Forge** — это агентная система на базе **Cloud.ru Evolution Foundation Model**, предназначенная для автоматической генерации валидных автотестов (UI & API).
+**TestOps Evolution Forge** — это интеллектуальная агентная система на базе **Cloud.ru Evolution Foundation Model** для автоматической генерации валидных E2E и API тестов.
 
-## 🚀 Основные возможности
+## 🚀 Ключевые возможности
 
-*   **Multi-Agent Architecture**: Система из трех агентов (Analyst, Coder, Reviewer) на базе LangGraph.
-*   **Self-Correction Loop**: Код не отдается пользователю, пока не пройдет валидацию (linter + pytest collection).
-*   **Smart Swagger Parsing**: Умный разбор OpenAPI спецификаций для экономии контекста LLM.
-*   **Evolution UI**: Современный интерфейс в стилистике платформы Cloud.ru.
-*   **Streaming Logs**: Отображение "мыслей" агента в реальном времени через SSE.
+*   **Multi-Agent Workflow**: Оркестрация агентов (Analyst, Coder, Reviewer) через LangGraph.
+*   **Self-Correction Loop**: Гарантия валидности кода. Агент не отдает результат, пока он не пройдет статический анализ и проверку `pytest`.
+*   **Smart Context**: Умный парсинг OpenAPI (Swagger) с фильтрацией эндпоинтов под запрос пользователя.
+*   **RAG & Deduplication**: Поиск похожих тестов в векторной базе (ChromaDB) для предотвращения дублей.
+*   **Defect Awareness**: Учет исторических дефектов при генерации тест-плана.
 
-## 🛠 Технологический стек
+## 🛠 Технологии
 
-### Backend
-*   **Python 3.11** + **FastAPI** (Async REST API + SSE)
-*   **LangGraph** + **LangChain** (Оркестрация агентов)
-*   **Pytest** + **Ruff** (Валидация кода)
-*   **Docker** (Multistage build < 700MB)
+*   **Backend**: Python 3.11, FastAPI, LangGraph, Pydantic V2.
+*   **LLM**: Cloud.ru Evolution (OpenAI-compatible API).
+*   **Validation**: Ruff, Pytest, AST.
+*   **Frontend**: React 18, Monaco Editor, Tailwind CSS.
+*   **Infrastructure**: Docker Compose.
 
-### Frontend
-*   **React 18** + **Vite** + **TypeScript**
-*   **Monaco Editor** (Редактор кода как в VS Code)
-*   **Tailwind CSS v4** (Стилизация под Cloud.ru)
-*   **Zustand** (State Management)
+## 🏃‍♂️ Быстрый старт
 
-## 🏃‍♂️ Быстрый старт (Docker)
+1.  **Настройка окружения**
+    Создайте файл `backend/.env`:
+    ```ini
+    CLOUD_RU_API_KEY=your_key
+    CLOUD_RU_BASE_URL=https://foundation-models.api.cloud.ru/v1
+    MODEL_NAME=Qwen/Qwen2.5-Coder-32B-Instruct
+    ```
 
-Запустить весь проект одной командой:
+2.  **Запуск в Docker**
+    ```bash
+    docker-compose up --build -d
+    ```
+    *   Frontend: [http://localhost:3000](http://localhost:3000)
+    *   Backend Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
+3.  **Локальная разработка (Backend)**
+    ```bash
+    cd backend
+    poetry install
+    poetry run pytest  # Запуск тестов
+    poetry run uvicorn src.app.main:app --reload
+    ```
+
+## 🧪 Тестирование (Quality Gate)
+
+Проект покрыт unit-тестами на **83%**.
+Для запуска проверки покрытия:
 ```bash
-docker-compose up --build -d
+cd backend
+poetry run pytest --cov=src
 ```
-
-После запуска:
-*   🖥 **Frontend**: [http://localhost:3000](http://localhost:3000)
-*   ⚙️ **Backend API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ## 🏗 Архитектура
 
-1.  **Analyst Agent**: Принимает запрос (текст или Swagger URL), составляет план тестирования.
-2.  **Coder Agent**: Генерирует Python код (Pytest + Playwright/Requests) по паттерну AAA.
-3.  **Reviewer Agent**: Запускает код в изолированной среде. Если есть ошибки — возвращает Coder'у на доработку.
-
-## 🔐 Конфигурация
-
-Создайте файл `backend/.env` (см. `backend/.env.example`):
-
-```ini
-CLOUD_RU_API_KEY=your_key_here
-CLOUD_RU_BASE_URL=https://foundation-models.api.cloud.ru/v1
-MODEL_NAME=Qwen/Qwen2.5-Coder-32B-Instruct
-```
-
-## 📸 Скриншоты
-
-*(Место для скриншотов интерфейса)*
+Система построена на принципах **Clean Architecture**:
+*   `src/app/core`: Конфигурация и настройки.
+*   `src/app/domain`: Pydantic модели и стейт агентов.
+*   `src/app/services`: Бизнес-логика (LLM, Parsers, Linter, Deduplication, Defects).
+*   `src/app/agents`: Граф LangGraph и промпты.
+*   `src/app/api`: REST API контроллеры.
