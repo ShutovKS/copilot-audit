@@ -25,28 +25,21 @@ def mock_state():
 @patch("builtins.open", new_callable=MagicMock)
 async def test_analyst_node(mock_open, mock_defects, mock_dedup, mock_get_model, mock_state):
     """Test Analyst node logic."""
-    # Mock Deduplication (Cache Miss)
     mock_dedup.find_similar.return_value = None
-    
-    # Mock Defect Service
     mock_defects.get_relevant_defects.return_value = ""
 
-    # Mock LLM
     mock_llm_instance = AsyncMock()
     mock_response = MagicMock()
     mock_response.content = "1. Open Page\n2. Click Login"
     mock_llm_instance.ainvoke.return_value = mock_response
     
     mock_get_model.return_value = mock_llm_instance
-    
-    # Mock file open (not really needed as we mocked defect_service, but good to have)
     mock_open.side_effect = FileNotFoundError 
     
     result = await analyst_node(mock_state)
     
     assert result["status"] == ProcessingStatus.GENERATING
     assert "1. Open Page" in result["test_plan"][0]
-    # Check heuristic for test type
     assert result["test_type"] == TestType.UI
 
 @pytest.mark.asyncio
@@ -74,11 +67,12 @@ async def test_coder_node(mock_get_model, mock_state):
 async def test_reviewer_node_success(mock_dedup, mock_validate, mock_state):
     """Test Reviewer node success path."""
     mock_state["generated_code"] = "valid code"
-    mock_validate.return_value = (True, "Success")
+    mock_validate.return_value = (True, "Success", "fixed valid code")
     
     result = await reviewer_node(mock_state)
     
     assert result["status"] == ProcessingStatus.COMPLETED
+    assert result["generated_code"] == "fixed valid code"
     mock_dedup.save.assert_called_once()
 
 @pytest.mark.asyncio
@@ -86,7 +80,7 @@ async def test_reviewer_node_success(mock_dedup, mock_validate, mock_state):
 async def test_reviewer_node_failure(mock_validate, mock_state):
     """Test Reviewer node failure path."""
     mock_state["generated_code"] = "invalid code"
-    mock_validate.return_value = (False, "Syntax Error")
+    mock_validate.return_value = (False, "Syntax Error", "invalid code")
     
     result = await reviewer_node(mock_state)
     
