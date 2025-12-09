@@ -9,9 +9,17 @@ import allure
 import pytest
 
 @allure.feature("Login")
-def test_example():
-    with allure.step("Check boolean"):
-        assert True
+@allure.story("Auth")
+@allure.label("owner", "qa_team")
+class TestLogin:
+
+    @allure.title("Check boolean")
+    @allure.tag("smoke")
+    @allure.link("http://jira", name="Jira")
+    @allure.label("priority", "critical")
+    def test_example(self):
+        with allure.step("Check boolean"):
+            assert True
 """
 
 @pytest.fixture
@@ -32,14 +40,12 @@ def test_validate_syntax_error(syntax_error_code: str) -> None:
     assert "AST Syntax Error" in message
 
 def test_validate_allure_missing(code_without_allure: str) -> None:
-    """Test that code without Allure decorators fails validation."""
-    with patch("src.app.services.tools.linter.subprocess.run") as mock_run:
-        mock_run.return_value.returncode = 0
-        
-        is_valid, message, fixed = CodeValidator.validate(code_without_allure)
+    """Test that code without Allure decorators fails validation."""    
+    is_valid, message, fixed = CodeValidator.validate(code_without_allure)
 
-        assert is_valid is False
-        assert "Allure Compliance Error" in message
+    assert is_valid is False
+    assert "Allure Strict Compliance Failed" in message
+    assert "missing @allure.title" in message
 
 @patch("src.app.services.tools.linter.subprocess.run")
 def test_validate_ruff_error(mock_run: MagicMock, valid_code: str) -> None:

@@ -34,6 +34,7 @@ EXCLUDE_PATTERNS=(
   "pnpm-lock.yaml"
   "gluing-project-contents.sh"
   "openapi.yaml"
+  ".coverage"
 )
 
 EXCLUDE_PATTERN="(^|/)($(
