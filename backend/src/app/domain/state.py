@@ -13,28 +13,21 @@ class AgentState(TypedDict):
     Maintains the complete context of the generation lifecycle.
     """
     
-    # Context & History (LangGraph Memory Requirement)
     messages: Annotated[List[BaseMessage], add_messages]
     
-    # Input Data
     user_request: str
-    model_name: str  # Selected LLM Model
-    
-    # Workflow Control
+    model_name: str
+
     status: ProcessingStatus
     test_type: Optional[TestType]
     attempts: int
     
-    # Artifacts
     test_plan: List[str]
     generated_code: str
     
-    # Batch Execution Data
     scenarios: Optional[List[str]]
     batch_results: Optional[List[str]]
     
-    # Validation Loop Data
     validation_error: Optional[str]
     
-    # Observability (Accumulated logs for Frontend)
     logs: Annotated[List[str], operator.add]

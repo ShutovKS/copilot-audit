@@ -13,21 +13,17 @@ from src.app.agents.batch import process_batch
 from src.app.services.deduplication import DeduplicationService
 from src.app.services.defects import DefectAnalysisService
 
-# Initialize Services
 dedup_service = DeduplicationService()
 defect_service = DefectAnalysisService()
 llm_service = CloudRuLLMService()
 
 
 async def analyst_node(state: AgentState) -> Dict[str, Any]:
-    # Dynamic LLM Init
     llm = llm_service.get_model(state.get("model_name"))
     raw_input = state['user_request']
     
-    # 0. Load Historical Defects
     defects_context = defect_service.get_relevant_defects(raw_input)
 
-    # 1. Check Deduplication (Cache)
     cached_code = dedup_service.find_similar(raw_input)
     
     if cached_code:
@@ -37,7 +33,6 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
             "logs": ["Analyst: Found exact match in knowledge base (RAG). Skipping generation.", "System: Retrieved verified code from Vector DB."]
         }
 
-    # 2. Smart Parsing Logic
     parsed_context = OpenAPIParser.parse(raw_input, query=raw_input)
     
     messages = [
@@ -103,10 +98,8 @@ async def reviewer_node(state: AgentState) -> Dict[str, Any]:
     Reviewer Agent: Validates the code AND Auto-Fixes it.
     """
     code = state["generated_code"]
-    # Validate returns (is_valid, msg, fixed_code)
     is_valid, error_msg, fixed_code = CodeValidator.validate(code)
     
-    # Always update code with the fixed version (formatting, imports)
     new_state = {"generated_code": fixed_code or code}
 
     if is_valid:

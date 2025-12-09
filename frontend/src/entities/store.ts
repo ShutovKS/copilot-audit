@@ -18,7 +18,6 @@ export interface ModelInfo {
     description?: string;
 }
 
-// Enhanced list based on Cloud.ru JSON
 export const AVAILABLE_MODELS: ModelInfo[] = [
     {
         id: 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
@@ -121,7 +120,6 @@ interface AppState {
   error: string | null;
   setError: (msg: string | null) => void;
 
-  // Settings
   editorSettings: EditorSettings;
   updateEditorSettings: (settings: Partial<EditorSettings>) => void;
 
@@ -131,7 +129,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (set, _) => ({
       input: '',
       setInput: (input) => set({ input }),
       

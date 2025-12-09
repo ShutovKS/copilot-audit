@@ -13,18 +13,14 @@ export const CodeEditor = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{url: string} | null>(null);
 
-  // Form State
   const [projectId, setProjectId] = useState('');
   const [token, setToken] = useState('');
   const [gitlabUrl, setGitlabUrl] = useState('https://gitlab.com');
 
-  // Typewriter Effect Refs
-  // Use ReturnType<typeof setInterval> for cross-environment compatibility (Node/Browser)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentIndexRef = useRef(0);
   const targetCodeRef = useRef('');
 
-  // Typewriter Logic
   useEffect(() => {
       if (storeCode !== targetCodeRef.current) {
           if (targetCodeRef.current === '' || storeCode.length < targetCodeRef.current.length) {
@@ -73,9 +69,7 @@ export const CodeEditor = () => {
 
   return (
     <div className="bg-[#1f2126] rounded-2xl h-full flex flex-col overflow-hidden shadow-2xl border border-white/5 relative">
-        {/* Header / Tabs */}
         <div className="h-12 flex items-center px-4 justify-between border-b border-white/5 bg-[#18191d]">
-             {/* Fake File Tabs */}
              <div className="flex gap-1 h-full pt-2">
                 <button 
                     onClick={() => setActiveFile('code')}
@@ -110,7 +104,6 @@ export const CodeEditor = () => {
         </div>
 
         <div className="flex-1 flex min-h-0">
-            {/* Sidebar File Explorer (Mock) */}
             <div className="w-48 border-r border-white/5 bg-[#18191d] p-3 hidden md:block">
                 <h4 className="text-[10px] font-bold text-muted uppercase tracking-wider mb-3">Explorer</h4>
                 <div className="space-y-1">
@@ -131,7 +124,6 @@ export const CodeEditor = () => {
                 </div>
             </div>
 
-            {/* Editor Content */}
             <div className="flex-1 bg-[#1f2126] relative">
                  <Editor
                     height="100%"
@@ -162,7 +154,6 @@ export const CodeEditor = () => {
             </div>
         </div>
 
-        {/* Modal code remains same... */}
         {isModalOpen && (
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div className="bg-[#1f2126] w-full max-w-md rounded-2xl border border-white/10 shadow-2xl p-6">

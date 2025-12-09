@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 async def event_generator(request_body: TestGenerationRequest, app_state) -> AsyncGenerator[str, None]:
-    # Get compiled graph from app state
     agent_graph = app_state.agent_graph
     
     async with AsyncSessionLocal() as db:
@@ -31,7 +30,6 @@ async def event_generator(request_body: TestGenerationRequest, app_state) -> Asy
         run_id = run_record.id
         logger.info(f"Run ID created: {run_id}")
         
-        # Use run_id as thread_id for persistence
         config = {"configurable": {"thread_id": str(run_id)}}
         
         initial_state = {
@@ -83,11 +81,9 @@ async def event_generator(request_body: TestGenerationRequest, app_state) -> Asy
 
             logger.info(f"Agent graph finished with status: {final_status}")
             
-            # Correctly handle final status
             if final_status == ProcessingStatus.COMPLETED:
                 yield f"data: {json.dumps({'type': 'finish', 'content': 'done'})}\n\n"
             else:
-                # Consider it an error if not completed successfully (e.g. max attempts reached)
                 yield f"data: {json.dumps({'type': 'error', 'content': 'Failed to generate valid code after maximum attempts.'})}\n\n"
             
             await history_service.update_run(

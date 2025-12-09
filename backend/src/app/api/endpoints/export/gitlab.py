@@ -22,7 +22,6 @@ async def export_to_gitlab(request: GitLabExportRequest):
     Exports the generated test to a real GitLab repository via Merge Request.
     """
     try:
-        # Determine base API URL
         api_url = f"{request.url.rstrip('/')}/api/v4"
         
         service = GitLabService(token=request.token, base_url=api_url)

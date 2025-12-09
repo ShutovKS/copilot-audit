@@ -14,7 +14,6 @@ interface SystemStatus {
     llm: string;
 }
 
-// UI Components for Settings
 const TabButton = ({ active, onClick, children }: { active: boolean, onClick: () => void, children: React.ReactNode }) => (
     <button 
         onClick={onClick}
@@ -65,7 +64,6 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     return (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-[#1f2126] w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl p-0 relative overflow-hidden flex flex-col max-h-[85vh]">
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 border-b border-white/5 bg-[#18191d]/50">
                      <div className="flex gap-2">
                         <TabButton active={activeTab === 'system'} onClick={() => setActiveTab('system')}>System</TabButton>
@@ -78,7 +76,6 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 <div className="p-0 overflow-y-auto custom-scrollbar">
                     {activeTab === 'system' && (
                         <div className="p-8 space-y-6">
-                            {/* System Status Content */}
                             <div className="grid gap-4">
                                 <div className="flex items-center justify-between p-4 bg-[#18191d] rounded-xl border border-white/5">
                                     <div className="flex items-center gap-4">
@@ -186,7 +183,6 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                     {activeTab === 'editor' && (
                         <div className="p-8">
                             <div className="grid gap-8">
-                                {/* Font Size */}
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-zinc-400 border border-white/5">
@@ -212,7 +208,6 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
                                 <div className="h-px bg-white/5" />
 
-                                {/* Minimap */}
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-zinc-400 border border-white/5">
@@ -231,7 +226,6 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
                                 <div className="h-px bg-white/5" />
 
-                                {/* Word Wrap */}
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-zinc-400 border border-white/5">

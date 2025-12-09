@@ -18,7 +18,6 @@ from src.app.api.endpoints.export import gitlab
 from src.app.services.llm_factory import CloudRuLLMService
 from src.app.agents.graph import compile_graph
 
-# Configure Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -32,13 +31,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     logger.info(f"Starting {settings.PROJECT_NAME}...")
     
-    # 1. Init SQL DB (SQLAlchemy)
     await init_db()
     
-    # 2. Init LangGraph Persistence
     DB_URI = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     
-    # Run Migrations
     try:
         logger.info("Running LangGraph migrations...")
         async with await psycopg.AsyncConnection.connect(DB_URI, autocommit=True) as conn:
@@ -48,7 +44,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to run LangGraph migrations: {e}")
 
-    # Create Pool and Compile Graph
     connection_pool = AsyncConnectionPool(conninfo=DB_URI, max_size=20, open=False)
     await connection_pool.open()
     
@@ -60,7 +55,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     yield
     
-    # Cleanup
     logger.info("Closing LangGraph Postgres Pool...")
     await app.state.connection_pool.close()
     logger.info("Shutting down...")

@@ -12,7 +12,6 @@ class CloudRuLLMService:
         self._settings = get_settings()
 
     def get_model(self, model_name: Optional[str] = None) -> BaseChatModel:
-        # Use provided model or fallback to env setting
         target_model = model_name or self._settings.MODEL_NAME
         
         return ChatOpenAI(

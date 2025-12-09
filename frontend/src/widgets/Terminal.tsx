@@ -2,7 +2,6 @@ import { Terminal as TerminalIcon, CheckCircle2, AlertCircle, Loader2, Activity,
 import { useAppStore } from '../entities/store';
 import { useEffect, useRef, useState } from 'react';
 
-// Pipeline Steps Definition
 const STEPS = [
     { id: 'analyst', label: 'Анализ', icon: BrainCircuit },
     { id: 'coder', label: 'Кодинг', icon: Code2 },
@@ -11,7 +10,6 @@ const STEPS = [
 
 const LogItem = ({ log, timestamp }: { log: string, timestamp: string }) => {
     const [expanded, setExpanded] = useState(false);
-    // Reduced threshold to 60 chars so more logs are collapsible
     const isLong = log.length > 60 || log.includes('\n');
     
     return (
@@ -59,7 +57,6 @@ export const Terminal = ({ onOpenSettings }: TerminalProps) => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // Determine current active step based on logs
   const getCurrentStepIndex = () => {
       if (status === 'success') return STEPS.length; 
       if (status === 'error') return -1;
@@ -76,9 +73,7 @@ export const Terminal = ({ onOpenSettings }: TerminalProps) => {
 
   return (
     <div className="flex flex-col gap-4 h-full">
-        {/* Top Card: Status or Pipeline */}
         <div className="bg-[#1f2126] rounded-2xl p-6 shadow-xl border border-white/5 relative overflow-hidden">
-            {/* Header with Settings */}
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-2">
                     <Activity size={16} className={status === 'processing' ? 'text-[#00b67a] animate-pulse' : 'text-muted'} />
@@ -110,48 +105,44 @@ export const Terminal = ({ onOpenSettings }: TerminalProps) => {
                 </div>
             ) : (
                 <>
-                    <div className="flex justify-between relative px-2 mb-2">
-                        {/* Connecting Lines Background */}
-                        <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-white/5 -translate-y-1/2 z-0 rounded-full" />
-                        
-                        {/* Progress Line */}
-                        <div 
-                            className={`absolute top-1/2 left-4 h-0.5 -translate-y-1/2 z-0 transition-all duration-700 ease-in-out rounded-full ${status === 'error' ? 'bg-error' : 'bg-gradient-to-r from-[#00b67a] to-blue-500'}`}
-                            style={{ width: `${Math.min((activeStepIndex / (STEPS.length - 1)) * 100, 100)}%` }}
-                        />
-                        
-                        {STEPS.map((step, index) => {
-                            const isActive = index === activeStepIndex && status === 'processing';
-                            const isPast = index < activeStepIndex || status === 'success';
-                            const isError = status === 'error' && index === activeStepIndex;
-                            
-                            return (
-                                <div key={step.id} className="relative z-10 flex flex-col items-center gap-4">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 border-2 shadow-lg
-                                        ${isActive ? 'bg-[#1f2126] border-[#00b67a] text-[#00b67a] scale-110 shadow-[0_0_15px_rgba(0,182,122,0.3)]' : 
-                                          isError ? 'bg-[#1f2126] border-error text-error shadow-error/20' :
-                                          isPast ? 'bg-[#2b2d33] border-[#2b2d33] text-white shadow-md' : 
-                                          'bg-[#18191d] border-white/5 text-muted'}
-                                    `}>
-                                        {isError ? <AlertCircle size={18} /> : isPast ? <CheckCircle2 size={18} strokeWidth={3} className="text-[#00b67a]" /> : <step.icon size={18} />}
-                                    </div>
-                                    
-                                    {/* Label */}
-                                    <div className={`absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center transition-all duration-300`}>
-                                        <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-white' : isError ? 'text-error' : isPast ? 'text-zinc-400' : 'text-muted'}`}>
-                                            {step.label}
-                                        </span>
-                                    </div>
+                <div className="flex justify-between relative px-2 mb-2">
+                    <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-white/5 -translate-y-1/2 z-0 rounded-full" />
+
+                    <div
+                        className={`absolute top-1/2 left-4 h-0.5 -translate-y-1/2 z-0 transition-all duration-700 ease-in-out rounded-full ${status === 'error' ? 'bg-error' : 'bg-gradient-to-r from-[#00b67a] to-blue-500'}`}
+                        style={{ width: `${Math.min((activeStepIndex / (STEPS.length - 1)) * 100, 100)}%` }}
+                    />
+
+                    {STEPS.map((step, index) => {
+                        const isActive = index === activeStepIndex && status === 'processing';
+                        const isPast = index < activeStepIndex || status === 'success';
+                        const isError = status === 'error' && index === activeStepIndex;
+
+                        return (
+                            <div key={step.id} className="relative z-10 flex flex-col items-center gap-4">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 border-2 shadow-lg
+                                    ${isActive ? 'bg-[#1f2126] border-[#00b67a] text-[#00b67a] scale-110 shadow-[0_0_15px_rgba(0,182,122,0.3)]' : 
+                                      isError ? 'bg-[#1f2126] border-error text-error shadow-error/20' :
+                                      isPast ? 'bg-[#2b2d33] border-[#2b2d33] text-white shadow-md' : 
+                                      'bg-[#18191d] border-white/5 text-muted'}
+                                `}>
+                                    {isError ? <AlertCircle size={18} /> : isPast ? <CheckCircle2 size={18} strokeWidth={3} className="text-[#00b67a]" /> : <step.icon size={18} />}
                                 </div>
-                            );
-                        })}
-                    </div>
+
+                                <div className={`absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center transition-all duration-300`}>
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-white' : isError ? 'text-error' : isPast ? 'text-zinc-400' : 'text-muted'}`}>
+                                        {step.label}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
                     <div className="h-6" />
                 </>
             )}
         </div>
 
-        {/* Logs Card */}
         <div className="flex-1 bg-[#1f2126] rounded-2xl p-0 shadow-xl border border-white/5 flex flex-col overflow-hidden transition-all duration-300 hover:border-white/10">
              <div className="p-3 px-4 border-b border-white/5 flex justify-between items-center bg-[#18191d]/30">
                 <div className="flex items-center gap-2">

@@ -12,9 +12,7 @@ export const Workspace = () => {
 
   return (
     <div className="flex h-screen bg-[#131418] p-4 gap-4 overflow-hidden font-sans relative">
-        {/* Left Block: Configuration / History */}
         <div className="w-[400px] flex-shrink-0 flex flex-col gap-2">
-            {/* Tabs */}
             <div className="flex bg-[#1f2126] p-1 rounded-xl border border-white/5 shrink-0">
                 <button 
                     onClick={() => setActiveTab('config')}
@@ -35,18 +33,14 @@ export const Workspace = () => {
             </div>
         </div>
 
-        {/* Center Block: Result (Editor) */}
         <div className="flex-1 flex flex-col min-w-0">
             <CodeEditor />
         </div>
 
-        {/* Right Block: Status & Logs */}
         <div className="w-[340px] flex-shrink-0 flex flex-col">
-            {/* Pass openSettings handler to Terminal */}
             <Terminal onOpenSettings={() => setIsSettingsOpen(true)} />
         </div>
 
-        {/* Modals */}
         <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
         <ErrorSuggestionModal />
     </div>

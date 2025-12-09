@@ -16,7 +16,6 @@ class DeduplicationService:
         self.settings = get_settings()
         
         try:
-            # Connect to ChromaDB container
             self.client = chromadb.HttpClient(
                 host=self.settings.CHROMA_HOST,
                 port=self.settings.CHROMA_PORT
@@ -31,7 +30,6 @@ class DeduplicationService:
             )
         except Exception as e:
             logger.error(f"Failed to connect to ChromaDB: {e}")
-            # Fallback for tests/local without docker
             self.collection = None
 
     def find_similar(self, query: str, threshold: float = 0.2) -> Optional[str]:

@@ -93,7 +93,6 @@ export const Sidebar = () => {
 
   return (
     <div className="bg-[#1f2126] rounded-2xl h-full flex flex-col overflow-hidden shadow-2xl border border-white/5">
-       {/* Card Header */}
        <div className="p-6 pb-2">
           <div className="flex items-center gap-3 mb-1">
              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[#1f2126]">
@@ -106,7 +105,6 @@ export const Sidebar = () => {
        
        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
           
-          {/* Input Block */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
                 <label className="text-xs font-medium text-muted">Требования / Swagger</label>
@@ -134,7 +132,6 @@ export const Sidebar = () => {
                 />
             </div>
             
-            {/* Quick Actions (AI Features) */}
             <div className="flex flex-wrap gap-2 pt-2">
                 <button onClick={() => addFeature('Добавь негативные сценарии.')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-[10px] text-zinc-300 transition-colors border border-white/5">
                     <ShieldAlert size={10} className="text-error" /> Негативные тесты
@@ -148,7 +145,6 @@ export const Sidebar = () => {
             </div>
           </div>
 
-          {/* Presets */}
           <div className="space-y-2">
              <label className="text-xs font-medium text-muted">Быстрые сценарии</label>
              <div className="flex gap-2">
@@ -170,7 +166,6 @@ export const Sidebar = () => {
           </div>
        </div>
 
-       {/* Action Footer */}
        <div className="p-6 pt-0">
           <button 
             onClick={handleGenerate}

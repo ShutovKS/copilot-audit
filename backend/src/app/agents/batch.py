@@ -6,11 +6,9 @@ from src.app.services.llm_factory import CloudRuLLMService
 from src.app.agents.prompts import CODER_SYSTEM_PROMPT, FIXER_SYSTEM_PROMPT
 from src.app.services.tools.linter import CodeValidator
 
-# Initialize Service once
 llm_service = CloudRuLLMService()
 llm = llm_service.get_model()
 
-# Rate Limiting Semaphore (Cloud.ru might have limits)
 SEMAPHORE = asyncio.Semaphore(5)
 
 async def process_single_scenario(scenario: str) -> str:
@@ -18,7 +16,6 @@ async def process_single_scenario(scenario: str) -> str:
     Runs the full generation loop (Code -> Validate -> Fix) for a single scenario.
     """
     async with SEMAPHORE:
-        # 1. Generate Initial Code
         messages = [
             SystemMessage(content=CODER_SYSTEM_PROMPT),
             HumanMessage(content=f"Generate a Pytest test for this scenario:\n{scenario}")
@@ -28,19 +25,15 @@ async def process_single_scenario(scenario: str) -> str:
             response = await llm.ainvoke(messages)
             code = str(response.content).replace("```python", "").replace("```", "").strip()
             
-            # 2. Validation Loop (Max 3 attempts)
             for attempt in range(3):
-                # Updated to unpack 3 values (is_valid, error, fixed_code)
                 is_valid, error_msg, fixed_code = CodeValidator.validate(code)
                 
-                # Use fixed code if available
                 if fixed_code:
                     code = fixed_code
                 
                 if is_valid:
                     return code
                 
-                # Fix
                 fix_prompt = FIXER_SYSTEM_PROMPT.format(
                     error_log=error_msg,
                     code=code
@@ -51,7 +44,6 @@ async def process_single_scenario(scenario: str) -> str:
                 ])
                 code = str(response.content).replace("```python", "").replace("```", "").strip()
             
-            # If still failing, return the last attempt with a comment
             return f"# FAILED TO VALIDATE AFTER 3 ATTEMPTS\n# ERROR: {error_msg}\n{code}"
             
         except Exception as e:
