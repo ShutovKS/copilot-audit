@@ -23,6 +23,7 @@ class AgentState(TypedDict):
     attempts: int
     
     test_plan: List[str]
+    technical_context: Optional[str]
     generated_code: str
     
     scenarios: Optional[List[str]]

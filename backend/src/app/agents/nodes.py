@@ -33,7 +33,10 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
             "logs": ["Analyst: Found exact match in knowledge base (RAG). Skipping generation.", "System: Retrieved verified code from Vector DB."]
         }
 
-    parsed_context = OpenAPIParser.parse(raw_input, query=raw_input)
+    if "[SOURCE CODE CONTEXT" in raw_input:
+        parsed_context = raw_input
+    else:
+        parsed_context = OpenAPIParser.parse(raw_input, query=raw_input)
     
     messages = [
         SystemMessage(content=ANALYST_SYSTEM_PROMPT),
@@ -52,6 +55,7 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     
     return {
         "test_plan": [str(plan)],
+        "technical_context": parsed_context,
         "scenarios": scenarios if len(scenarios) > 1 else None,
         "test_type": t_type,
         "status": ProcessingStatus.GENERATING,
@@ -72,7 +76,9 @@ async def coder_node(state: AgentState) -> Dict[str, Any]:
         log_msg = f"Coder: Fixing errors (Attempt {state.get('attempts', 0) + 1})..."
     else:
         plan_str = "\n".join(state["test_plan"])
-        prompt = f"Test Plan:\n{plan_str}\n\nGenerate the full Python code now."
+        tech_context = state.get("technical_context", "")
+        
+        prompt = f"Technical Context (API/Code Structure):\n{tech_context}\n\nTest Plan:\n{plan_str}\n\nGenerate the full Python code now."
         log_msg = "Coder: Generating initial code..."
 
     messages = [

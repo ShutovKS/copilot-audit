@@ -1,12 +1,14 @@
 # TestOps Forge Frontend
 
-Клиентское приложение (SPA) на базе React + Vite, реализующее интерфейс генератора тестов.
+Клиентское приложение (SPA) на базе React + Vite + Tailwind CSS.
 
-## Особенности
+## Особенности UI
 
-*   **Monaco Editor**: Полноценный редактор кода с подсветкой синтаксиса Python.
-*   **Server-Sent Events (SSE)**: Отображение логов генерации в реальном времени.
-*   **Evolution UI**: Кастомная тема, повторяющая дизайн Cloud.ru Console.
+*   **Code Editor**: Monaco Editor с поддержкой Python syntax highlighting.
+*   **Streaming Logs**: Отображение процесса мышления агента (Terminal).
+*   **Source Context**: Загрузка ZIP-архивов и клонирование Git-репозиториев для анализа кода.
+*   **Session Management**: Управление сессиями (Account Tab) для сохранения истории.
+*   **Evolution UI**: Темная тема в стиле Cloud.ru Console.
 
 ## Локальная разработка
 
@@ -20,7 +22,7 @@
     npm run dev
     ```
 
-Приложение будет доступно по адресу: `http://localhost:5173`.
+Приложение будет доступно по адресу: `http://localhost:5173`. API URL настраивается через `VITE_API_URL`.
 
 ## Сборка (Production)
 
@@ -28,4 +30,4 @@
 npm run build
 ```
 
-Результат сборки будет в папке `dist/`. В Docker-образе эти файлы раздаются через Nginx.
+Результат сборки (`dist/`) раздается через Nginx в Docker-контейнере.

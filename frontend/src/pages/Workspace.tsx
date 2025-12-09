@@ -5,6 +5,7 @@ import { Terminal } from '../widgets/Terminal';
 import { HistoryList } from '../widgets/HistoryList';
 import { SettingsModal } from '../widgets/SettingsModal';
 import { ErrorSuggestionModal } from '../widgets/ErrorSuggestionModal';
+import { Toast } from '../widgets/Toast';
 
 export const Workspace = () => {
   const [activeTab, setActiveTab] = useState<'config' | 'history'>('config');
@@ -43,6 +44,7 @@ export const Workspace = () => {
 
         <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
         <ErrorSuggestionModal />
+        <Toast />
     </div>
   );
 };

@@ -105,7 +105,7 @@ interface AppState {
   setSessionId: (id: string) => void;
 
   input: string;
-  setInput: (val: string) => void;
+  setInput: (val: string | ((prev: string) => string)) => void;
   
   code: string;
   setCode: (val: string) => void;
@@ -128,6 +128,10 @@ interface AppState {
 
   selectedModel: string;
   setSelectedModel: (model: string) => void;
+
+  toast: { message: string; type: 'success' | 'error' | 'info' } | null;
+  showToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  hideToast: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -137,7 +141,9 @@ export const useAppStore = create<AppState>()(
       setSessionId: (sessionId) => set({ sessionId }),
 
       input: '',
-      setInput: (input) => set({ input }),
+      setInput: (val) => set((state) => ({
+          input: typeof val === 'function' ? val(state.input) : val
+      })),
       
       code: '# Generated tests will appear here...',
       setCode: (code) => set({ code }),
@@ -166,6 +172,10 @@ export const useAppStore = create<AppState>()(
 
       selectedModel: DEFAULT_MODEL,
       setSelectedModel: (selectedModel) => set({ selectedModel }),
+
+      toast: null,
+      showToast: (message, type) => set({ toast: { message, type } }),
+      hideToast: () => set({ toast: null }),
     }),
     {
       name: 'app-storage',
@@ -175,9 +185,11 @@ export const useAppStore = create<AppState>()(
           sessionId: state.sessionId 
       }),
       onRehydrateStorage: () => (state) => {
+          // 1. Session ID Init
           if (state && !state.sessionId) {
               state.setSessionId(crypto.randomUUID());
           }
+          // 2. Model Validation
           if (state && !AVAILABLE_MODELS.some(m => m.id === state.selectedModel)) {
               state.setSelectedModel(DEFAULT_MODEL);
           }

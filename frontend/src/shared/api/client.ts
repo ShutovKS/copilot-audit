@@ -29,3 +29,20 @@ export const exportToGitLab = async (code: string, projectId: string, token: str
   });
   return response.data;
 };
+
+export const analyzeSourceCode = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await api.post('/analyze-source', formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        }
+    });
+    return response.data;
+};
+
+export const analyzeGitRepo = async (url: string, token?: string) => {
+    const response = await api.post('/analyze-git', { url, token });
+    return response.data;
+};

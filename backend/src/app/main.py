@@ -1,22 +1,19 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 import logging
-import psycopg
 import sys
-from psycopg_pool import AsyncConnectionPool
 
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from src.app.core.config import get_settings
-from src.app.core.database import init_db, AsyncSessionLocal
-from src.app.api.endpoints import generation, history
+from src.app.core.database import AsyncSessionLocal
+from src.app.core.bootstrap import bootstrap_application, shutdown_application
+from src.app.api.endpoints import generation, history, analysis
 from src.app.api.endpoints.export import gitlab
 from src.app.services.llm_factory import CloudRuLLMService
-from src.app.agents.graph import compile_graph
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,44 +28,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     logger.info(f"Starting {settings.PROJECT_NAME}...")
     
-    await init_db()
-    
-    try:
-        async with AsyncSessionLocal() as session:
-            logger.info("Checking DB schema for session_id...")
-            await session.execute(text(
-                "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS session_id VARCHAR DEFAULT 'default' NOT NULL;"
-            ))
-            await session.commit()
-            logger.info("Schema updated (session_id added).")
-    except Exception as e:
-        logger.warning(f"Migration step warning: {e}")
-
-    DB_URI = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-    
-    try:
-        logger.info("Running LangGraph migrations...")
-        async with await psycopg.AsyncConnection.connect(DB_URI, autocommit=True) as conn:
-            temp_saver = AsyncPostgresSaver(conn)
-            await temp_saver.setup()
-        logger.info("LangGraph migrations completed.")
-    except Exception as e:
-        logger.error(f"Failed to run LangGraph migrations: {e}")
-
-    connection_pool = AsyncConnectionPool(conninfo=DB_URI, max_size=20, open=False)
-    await connection_pool.open()
-    
-    checkpointer = AsyncPostgresSaver(connection_pool)
-    app.state.agent_graph = compile_graph(checkpointer)
-    app.state.connection_pool = connection_pool
-    
-    logger.info("Agent Graph compiled and ready.")
+    await bootstrap_application(app)
     
     yield
     
-    logger.info("Closing LangGraph Postgres Pool...")
-    await app.state.connection_pool.close()
     logger.info("Shutting down...")
+    await shutdown_application(app)
 
 
 app = FastAPI(
@@ -89,6 +54,7 @@ app.add_middleware(
 app.include_router(generation.router, prefix="/api/v1", tags=["Generation"])
 app.include_router(history.router, prefix="/api/v1/history", tags=["History"])
 app.include_router(gitlab.router, prefix="/api/v1/export", tags=["Export"])
+app.include_router(analysis.router, prefix="/api/v1", tags=["Code Analysis"])
 
 
 @app.get("/api/v1/health", tags=["System"])

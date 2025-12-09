@@ -1,6 +1,7 @@
-import { Box, TerminalSquare, Loader2, Zap, ShieldAlert, Smartphone, Wand2, Layers } from 'lucide-react';
+import { Box, TerminalSquare, Loader2, Zap, ShieldAlert, Smartphone, Wand2, Paperclip, GitBranch, X, Check, Lock } from 'lucide-react';
 import { useAppStore } from '../entities/store';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { analyzeSourceCode, analyzeGitRepo } from '../shared/api/client';
 
 const PRESETS = {
     UI: `Напиши UI тест на Python (Playwright) для калькулятора Cloud.ru (https://cloud.ru/calculator). \nСценарий:\n1. Открыть страницу.\n2. Добавить сервис 'Виртуальная машина'.\n3. Изменить количество CPU на 4.\n4. Проверить, что цена изменилась.`,
@@ -8,8 +9,16 @@ const PRESETS = {
 };
 
 export const Sidebar = () => {
-  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status, selectedModel, sessionId } = useAppStore();
+  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status, selectedModel, sessionId, showToast } = useAppStore();
   const [isEnhancing, setIsEnhancing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showGitInput, setShowGitInput] = useState(false);
+  const [gitUrl, setGitUrl] = useState('');
+  const isValidGitUrl = gitUrl.match(/^https?:\/\/.+/);
+  const [gitToken, setGitToken] = useState('');
+  const [isPrivateRepo, setIsPrivateRepo] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleGenerate = async () => {
     if (!input.trim()) return;
@@ -87,6 +96,50 @@ export const Sidebar = () => {
       }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!file.name.endsWith('.zip')) { alert('Please upload a .zip file'); return; }
+      setIsUploading(true);
+      try {
+          const result = await analyzeSourceCode(file);
+          appendContext(result.summary, result.endpoint_count, file.name);
+      } catch (e) { showToast('Failed to analyze source code. See logs.', 'error'); console.error(e); }
+      finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+  };
+
+  const handleGitAnalysis = async () => {
+      if (!gitUrl.trim()) return;
+      setIsUploading(true);
+      try {
+          const token = isPrivateRepo && gitToken ? gitToken : undefined;
+          const result = await analyzeGitRepo(gitUrl, token);
+          appendContext(result.summary, result.endpoint_count, gitUrl);
+          setShowGitInput(false);
+          setGitUrl('');
+          setGitToken('');
+          setIsPrivateRepo(false);
+      } catch (e) { showToast('Failed to clone/analyze repo. Check URL or Token.', 'error'); console.error(e); }
+      finally { setIsUploading(false); }
+  };
+
+  const appendContext = (summary: string, count: number, source: string) => {
+      if (count === 0) {
+          showToast(
+              "⚠️ No API endpoints found!\n\nSupported Frameworks:\n• Python: FastAPI\n• Java: Spring Boot\n• Node.js: NestJS, Express\n\nCheck if your code uses standard decorators.", 
+              'error'
+          );
+          
+          const contextHeader = `\n\n[ANALYSIS RESULT (${source})]:\n❌ No supported API endpoints found.\nSupported: FastAPI, Spring, NestJS, Express.\n`;
+          setInput(prev => prev + contextHeader);
+          addLog(`System: Analyzed ${source} but found 0 endpoints.`);
+      } else {
+          const contextHeader = `\n\n[SOURCE CODE CONTEXT (${source}) - ${count} ENDPOINTS]:\n`;
+          setInput(prev => prev + contextHeader + summary);
+          addLog(`System: Successfully analyzed ${source}. Found ${count} endpoints.`);
+      }
+  };
+
   const addFeature = (text: string) => {
       setInput(input + (input ? '\n' : '') + text);
   };
@@ -101,7 +154,7 @@ export const Sidebar = () => {
              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[#1f2126]">
                  <span className="font-bold text-sm">1</span>
              </div>
-             <h2 className="text-lg font-medium text-white">Конфигурация теста</h2>
+             <h2 className="text-lg font-medium text-white">Конфигурация</h2>
           </div>
           <p className="text-xs text-muted pl-11">Настройте параметры генерации</p>
        </div>
@@ -111,27 +164,101 @@ export const Sidebar = () => {
           <div className="space-y-2">
             <div className="flex justify-between items-center">
                 <label className="text-xs font-medium text-muted">Требования / Swagger</label>
-                <div className="flex items-center gap-2">
+                
+                {/* Added 'relative' here to anchor the absolute popover */}
+                <div className="flex items-center gap-2 relative">
+                    {showGitInput ? (
+                        <div className="flex flex-col gap-2 p-3 bg-[#18191d] rounded-xl border border-white/10 animate-in slide-in-from-right-2 duration-200 z-50 absolute right-0 top-0 shadow-2xl w-72">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] font-bold text-muted uppercase">Clone Repository</span>
+                                <button onClick={() => setShowGitInput(false)} className="text-muted hover:text-white"><X size={12}/></button>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="text" 
+                                    value={gitUrl} 
+                                    onChange={e => setGitUrl(e.target.value)} 
+                                    placeholder="https://github.com/user/repo"
+                                    className={`flex-1 bg-black/30 text-[10px] text-white p-2 rounded-lg border outline-none transition-colors 
+                                        ${gitUrl && !isValidGitUrl ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-primary'}
+                                    `}
+                                    autoFocus
+                                />
+                                <button 
+                                    onClick={() => setIsPrivateRepo(!isPrivateRepo)}
+                                    className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${isPrivateRepo ? 'text-primary bg-primary/10' : 'text-muted'}`}
+                                    title="Private Repository?"
+                                >
+                                    <Lock size={12} />
+                                </button>
+                            </div>
+                            
+                            {isPrivateRepo && (
+                                <input 
+                                    type="password" 
+                                    value={gitToken} 
+                                    onChange={e => setGitToken(e.target.value)} 
+                                    placeholder="Personal Access Token (PAT)"
+                                    className="w-full bg-black/30 text-[10px] text-white p-2 rounded-lg border border-white/10 focus:border-primary outline-none animate-in fade-in slide-in-from-top-1"
+                                />
+                            )}
+
+                            <button 
+                                onClick={handleGitAnalysis} 
+                                disabled={isUploading || !isValidGitUrl}
+                                className={`w-full py-2.5 mt-2 bg-[#00b67a] text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-900/20
+                                    ${(isUploading || !isValidGitUrl) ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-[#00a36d] hover:scale-[1.02] active:scale-[0.98]'}
+                                `}
+                            >
+                                {isUploading ? <Loader2 size={14} className="animate-spin"/> : <GitBranch size={14}/>} 
+                                Analyze Repository
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            <button 
+                                onClick={() => setShowGitInput(true)}
+                                disabled={isUploading || isProcessing}
+                                className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-white disabled:opacity-50 transition-colors"
+                                title="Clone Git Repo"
+                            >
+                                <GitBranch size={10} /> Git
+                            </button>
+                            <div className="h-3 w-px bg-white/10 mx-1" />
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading || isProcessing}
+                                className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-white disabled:opacity-50 transition-colors"
+                                title="Upload ZIP"
+                            >
+                                <Paperclip size={10} /> {isUploading ? '...' : 'ZIP'}
+                            </button>
+                        </>
+                    )}
+                    
+                    <input type="file" ref={fileInputRef} className="hidden" accept=".zip" onChange={handleFileUpload} />
+                    
+                    <div className="h-3 w-px bg-white/10 mx-1" />
+
                     <button 
                         onClick={handleEnhance} 
                         disabled={isEnhancing || !input.trim()} 
                         className="flex items-center gap-1 text-[10px] text-secondary hover:text-white disabled:opacity-50 transition-colors"
-                        title="Улучшить промпт с помощью AI"
                     >
                         {isEnhancing ? <Loader2 size={10} className="animate-spin" /> : <Wand2 size={10} />}
                         AI Enhance
                     </button>
-                    <span className="text-[10px] text-muted opacity-50">{input.length}/2000</span>
                 </div>
             </div>
             <div className="bg-[#18191d] rounded-xl p-1 border border-white/5 focus-within:border-primary/50 transition-colors">
                 <textarea 
                     className="w-full h-48 bg-transparent border-none text-sm text-white p-3 focus:ring-0 resize-none placeholder:text-zinc-600"
-                    placeholder="Введите описание теста..."
+                    placeholder="Введите требования или загрузите код..."
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     disabled={isProcessing}
-                    maxLength={2000}
+                    maxLength={10000}
                 />
             </div>
             

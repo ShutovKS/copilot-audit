@@ -4,19 +4,19 @@
 
 ## 🚀 Ключевые возможности
 
-*   **Multi-Agent Workflow**: Оркестрация агентов (Analyst, Coder, Reviewer) через LangGraph.
-*   **Self-Correction Loop**: Гарантия валидности кода. Агент не отдает результат, пока он не пройдет статический анализ и проверку `pytest`.
-*   **Smart Context**: Умный парсинг OpenAPI (Swagger) с фильтрацией эндпоинтов под запрос пользователя.
-*   **RAG & Deduplication**: Поиск похожих тестов в векторной базе (ChromaDB) для предотвращения дублей.
-*   **Defect Awareness**: Учет исторических дефектов при генерации тест-плана.
+*   **🤖 Multi-Agent Workflow**: Оркестрация агентов (Analyst, Coder, Reviewer) через LangGraph. Агенты сами проверяют и исправляют свой код.
+*   **🛡️ Strict Quality Gate**: Гарантия валидности. Код не отдается пользователю, пока не пройдет AST-валидацию и `pytest --collect-only`. Строгое соблюдение Allure-декораторов.
+*   **🔍 Code Analysis (White-Box)**: Парсинг исходного кода (Python FastAPI, Java Spring, JS/TS NestJS/Express) из **ZIP-архивов** или **Git-репозиториев** для генерации точных тестов.
+*   **🔐 Private Git Support**: Безопасная работа с приватными репозиториями через Access Tokens.
+*   **👥 Session Isolation**: Многопользовательский режим с разделением истории через уникальные Session Keys.
+*   **🧠 RAG & Deduplication**: Поиск похожих тестов в векторной базе (ChromaDB) для предотвращения дублей.
 
 ## 🛠 Технологии
 
-*   **Backend**: Python 3.11, FastAPI, LangGraph, Pydantic V2.
+*   **Backend**: Python 3.11, FastAPI, LangGraph, Pydantic V2, AST, SQLAlchemy (Async).
 *   **LLM**: Cloud.ru Evolution (OpenAI-compatible API).
-*   **Validation**: Ruff, Pytest, AST.
-*   **Frontend**: React 18, Monaco Editor, Tailwind CSS.
-*   **Infrastructure**: Docker Compose.
+*   **Frontend**: React 18, Vite, Tailwind CSS, Monaco Editor.
+*   **Infrastructure**: Docker Compose, PostgreSQL, ChromaDB.
 
 ## 🏃‍♂️ Быстрый старт
 
@@ -35,28 +35,24 @@
     *   Frontend: [http://localhost:3000](http://localhost:3000)
     *   Backend Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-3.  **Локальная разработка (Backend)**
-    ```bash
-    cd backend
-    poetry install
-    poetry run pytest  # Запуск тестов
-    poetry run uvicorn src.app.main:app --reload
-    ```
+3.  **Использование**
+    *   Зайдите на Frontend.
+    *   Введите описание теста или загрузите код (ZIP/Git).
+    *   Получите готовый Pytest код с Allure-отчетами.
 
 ## 🧪 Тестирование (Quality Gate)
 
-Проект покрыт unit-тестами на **83%**.
-Для запуска проверки покрытия:
+Проект покрыт unit-тестами (Backend):
 ```bash
 cd backend
-poetry run pytest --cov=src
+poetry run pytest
 ```
 
 ## 🏗 Архитектура
 
 Система построена на принципах **Clean Architecture**:
-*   `src/app/core`: Конфигурация и настройки.
+*   `src/app/core`: Конфигурация и миграции.
 *   `src/app/domain`: Pydantic модели и стейт агентов.
-*   `src/app/services`: Бизнес-логика (LLM, Parsers, Linter, Deduplication, Defects).
+*   `src/app/services`: Бизнес-логика (LLM, Code Parsers, Git Service, Linter).
 *   `src/app/agents`: Граф LangGraph и промпты.
 *   `src/app/api`: REST API контроллеры.
