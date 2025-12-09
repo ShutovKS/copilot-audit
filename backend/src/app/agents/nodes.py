@@ -20,9 +20,6 @@ llm_service = CloudRuLLMService()
 
 
 async def analyst_node(state: AgentState) -> Dict[str, Any]:
-    """
-    Analyst Agent: Parses requirements, checks history of defects, and determines test strategy.
-    """
     # Dynamic LLM Init
     llm = llm_service.get_model(state.get("model_name"))
     raw_input = state['user_request']
@@ -51,10 +48,8 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     response = await llm.ainvoke(messages)
     plan = response.content
     
-    # Simple heuristic to determine type
     t_type = TestType.API if "api" in raw_input.lower() else TestType.UI
     
-    # Check for batch scenarios
     scenarios = []
     if "### SCENARIO:" in plan:
         raw_scenarios = plan.split("### SCENARIO:")
@@ -71,11 +66,6 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
 
 
 async def coder_node(state: AgentState) -> Dict[str, Any]:
-    """
-    Coder Agent: Generates the test code.
-    Handles both initial generation and fixing based on errors.
-    """
-    # Dynamic LLM Init
     llm = llm_service.get_model(state.get("model_name"))
     is_fixing = state.get("validation_error") is not None
     
@@ -97,7 +87,6 @@ async def coder_node(state: AgentState) -> Dict[str, Any]:
 
     response = await llm.ainvoke(messages)
     code = str(response.content)
-    
     code = code.replace("```python", "").replace("```", "").strip()
 
     return {
@@ -111,31 +100,29 @@ async def coder_node(state: AgentState) -> Dict[str, Any]:
 
 async def reviewer_node(state: AgentState) -> Dict[str, Any]:
     """
-    Reviewer Agent: Validates the code using static analysis and pytest collection.
+    Reviewer Agent: Validates the code AND Auto-Fixes it.
     """
     code = state["generated_code"]
-    is_valid, error_msg = CodeValidator.validate(code)
+    # Validate returns (is_valid, msg, fixed_code)
+    is_valid, error_msg, fixed_code = CodeValidator.validate(code)
+    
+    # Always update code with the fixed version (formatting, imports)
+    new_state = {"generated_code": fixed_code or code}
 
     if is_valid:
-        dedup_service.save(state['user_request'], code)
-        return {
-            "status": ProcessingStatus.COMPLETED,
-            "logs": ["Reviewer: Code passed all checks! Ready for dispatch.", "System: Saved to Knowledge Base."]
-        }
+        dedup_service.save(state['user_request'], new_state["generated_code"])
+        new_state["status"] = ProcessingStatus.COMPLETED
+        new_state["logs"] = ["Reviewer: Code passed checks (Auto-Fixed). Ready for dispatch.", "System: Saved to Knowledge Base."]
+        return new_state
     else:
-        return {
-            "status": ProcessingStatus.FIXING,
-            "validation_error": error_msg,
-            "logs": [f"Reviewer: Validation failed.\n{error_msg[:200]}..."]
-        }
+        new_state["status"] = ProcessingStatus.FIXING
+        new_state["validation_error"] = error_msg
+        new_state["logs"] = [f"Reviewer: Validation failed.\n{error_msg}"]
+        return new_state
 
 async def batch_node(state: AgentState) -> Dict[str, Any]:
-    """
-    Batch Processor: Runs multiple scenarios in parallel.
-    """
     scenarios = state["scenarios"]
     results = await process_batch(scenarios)
-    
     combined_code = "\n\n# ==========================================\n".join(results)
     
     return {

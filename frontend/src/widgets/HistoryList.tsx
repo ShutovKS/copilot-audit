@@ -65,10 +65,12 @@ export const HistoryList = () => {
                         <span className="text-[10px] text-muted">
                             {new Date(run.created_at).toLocaleTimeString()} {new Date(run.created_at).toLocaleDateString()}
                         </span>
-                        {run.status === 'COMPLETED' ? 
-                            <CheckCircle2 size={12} className="text-success" /> :
-                            <AlertCircle size={12} className="text-error" />
-                        }
+                        <div title={run.status === 'COMPLETED' ? 'Статус: Успешно' : 'Статус: Ошибка'}>
+                            {run.status === 'COMPLETED' ? 
+                                <CheckCircle2 size={14} className="text-success" /> :
+                                <AlertCircle size={14} className="text-error" />
+                            }
+                        </div>
                     </div>
                     <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed">
                         {run.user_request}

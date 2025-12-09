@@ -15,7 +15,8 @@ class Settings(BaseSettings):
 
     CLOUD_RU_API_KEY: SecretStr
     CLOUD_RU_BASE_URL: str = "https://foundation-models.api.cloud.ru/v1"
-    MODEL_NAME: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
+    # Updated to Qwen3 as per user list
+    MODEL_NAME: str = "Qwen/Qwen3-Coder-480B-A35B-Instruct"
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://testops:testops@db:5432/testops"

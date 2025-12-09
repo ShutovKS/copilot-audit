@@ -30,7 +30,12 @@ async def process_single_scenario(scenario: str) -> str:
             
             # 2. Validation Loop (Max 3 attempts)
             for attempt in range(3):
-                is_valid, error_msg = CodeValidator.validate(code)
+                # Updated to unpack 3 values (is_valid, error, fixed_code)
+                is_valid, error_msg, fixed_code = CodeValidator.validate(code)
+                
+                # Use fixed code if available
+                if fixed_code:
+                    code = fixed_code
                 
                 if is_valid:
                     return code

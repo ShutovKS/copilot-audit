@@ -4,7 +4,7 @@ import { CodeEditor } from '../widgets/Editor';
 import { Terminal } from '../widgets/Terminal';
 import { HistoryList } from '../widgets/HistoryList';
 import { SettingsModal } from '../widgets/SettingsModal';
-import { Settings } from 'lucide-react';
+import { ErrorSuggestionModal } from '../widgets/ErrorSuggestionModal';
 
 export const Workspace = () => {
   const [activeTab, setActiveTab] = useState<'config' | 'history'>('config');
@@ -12,15 +12,6 @@ export const Workspace = () => {
 
   return (
     <div className="flex h-screen bg-[#131418] p-4 gap-4 overflow-hidden font-sans relative">
-        {/* Settings Button (Floating) */}
-        <button 
-            onClick={() => setIsSettingsOpen(true)}
-            className="absolute top-6 right-6 z-50 p-2 rounded-full bg-[#1f2126] border border-white/5 text-muted hover:text-white hover:bg-[#2b2d33] transition-colors shadow-lg"
-            title="System Status & Settings"
-        >
-            <Settings size={18} />
-        </button>
-
         {/* Left Block: Configuration / History */}
         <div className="w-[400px] flex-shrink-0 flex flex-col gap-2">
             {/* Tabs */}
@@ -51,11 +42,13 @@ export const Workspace = () => {
 
         {/* Right Block: Status & Logs */}
         <div className="w-[340px] flex-shrink-0 flex flex-col">
-            <Terminal />
+            {/* Pass openSettings handler to Terminal */}
+            <Terminal onOpenSettings={() => setIsSettingsOpen(true)} />
         </div>
 
         {/* Modals */}
         <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        <ErrorSuggestionModal />
     </div>
   );
 };

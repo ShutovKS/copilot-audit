@@ -1,21 +1,10 @@
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from psycopg_pool import AsyncConnectionPool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 import os
 
 from src.app.domain.state import AgentState
 from src.app.domain.enums import ProcessingStatus
 from src.app.agents.nodes import analyst_node, coder_node, reviewer_node, batch_node
-from src.app.core.config import get_settings
-
-settings = get_settings()
-
-# Connection string for PostgresSaver (must use psycopg3 format)
-DB_URI = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-
-# Global pool for checkpointer
-connection_pool = AsyncConnectionPool(conninfo=DB_URI, max_size=20)
-checkpointer = AsyncPostgresSaver(connection_pool)
 
 
 def route_after_analyst(state: AgentState) -> str:
@@ -33,7 +22,10 @@ def should_continue(state: AgentState) -> str:
     return "coder"
 
 
-def build_graph():
+def create_workflow() -> StateGraph:
+    """
+    Constructs the StateGraph logic without compiling.
+    """
     workflow = StateGraph(AgentState)
 
     workflow.add_node("analyst", analyst_node)
@@ -64,8 +56,11 @@ def build_graph():
             "end": END
         }
     )
+    return workflow
 
-    # Compile with checkpointer for persistence
+def compile_graph(checkpointer: BaseCheckpointSaver = None):
+    """
+    Compiles the graph with an optional checkpointer.
+    """
+    workflow = create_workflow()
     return workflow.compile(checkpointer=checkpointer)
-
-agent_graph = build_graph()

@@ -1,4 +1,4 @@
-import { Box, TerminalSquare, Loader2, Zap, ShieldAlert, Smartphone, Wand2 } from 'lucide-react';
+import { Box, TerminalSquare, Loader2, Zap, ShieldAlert, Smartphone, Wand2, Layers } from 'lucide-react';
 import { useAppStore } from '../entities/store';
 import { useState } from 'react';
 
@@ -48,7 +48,10 @@ export const Sidebar = () => {
                              if (data.type === 'plan') setTestPlan(data.content);
                              if (data.type === 'status' && data.content === 'COMPLETED') setStatus('success');
                              if (data.type === 'finish') setStatus('success');
-                             if (data.type === 'error') setStatus('error');
+                             if (data.type === 'error') {
+                                 setStatus('error');
+                                 addLog(`Error: ${data.content}`);
+                             }
                          } catch(e) {}
                      }
                 }
@@ -175,7 +178,7 @@ export const Sidebar = () => {
             className={`w-full h-12 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2
                 ${isDisabled 
                     ? 'bg-[#2b2d33] text-zinc-500 cursor-not-allowed border border-white/5' 
-                    : 'bg-primary text-[#131418] hover:bg-primaryHover hover:shadow-lg hover:shadow-primary/20'}
+                    : 'bg-[#00b67a] hover:bg-[#00a36d] text-white hover:shadow-[0_0_20px_rgba(0,182,122,0.4)] hover:scale-[1.02] active:scale-[0.98]'}
             `}
           >
             {isProcessing ? (
