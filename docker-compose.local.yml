@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: testops-forge-db
+    environment:
+      - POSTGRES_USER=testops
+      - POSTGRES_PASSWORD=testops
+      - POSTGRES_DB=testops
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - forge-network
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: testops-forge-chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - forge-network
+
+networks:
+  forge-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  chroma_data:
