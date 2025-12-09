@@ -11,7 +11,7 @@ interface TestRun {
 }
 
 export const HistoryList = () => {
-  const { setInput, setCode } = useAppStore();
+  const { setInput, setCode, sessionId } = useAppStore();
   const [history, setHistory] = useState<TestRun[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -19,7 +19,11 @@ export const HistoryList = () => {
       setLoading(true);
       try {
         const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-        const res = await fetch(`${API_URL}/history`);
+        const res = await fetch(`${API_URL}/history`, {
+            headers: {
+                'X-Session-ID': sessionId
+            }
+        });
         if (res.ok) {
             const data = await res.json();
             setHistory(data);
@@ -30,8 +34,10 @@ export const HistoryList = () => {
   };
 
   useEffect(() => {
-      fetchHistory();
-  }, []);
+      if (sessionId) {
+          fetchHistory();
+      }
+  }, [sessionId]);
 
   const loadRun = (run: TestRun) => {
       if (run.user_request) setInput(run.user_request);

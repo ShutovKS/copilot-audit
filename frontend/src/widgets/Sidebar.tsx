@@ -8,7 +8,7 @@ const PRESETS = {
 };
 
 export const Sidebar = () => {
-  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status, selectedModel } = useAppStore();
+  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status, selectedModel, sessionId } = useAppStore();
   const [isEnhancing, setIsEnhancing] = useState(false);
   
   const handleGenerate = async () => {
@@ -24,7 +24,10 @@ export const Sidebar = () => {
     try {
         const response = await fetch(`${API_URL}/generate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Session-ID': sessionId
+            },
             body: JSON.stringify({ 
                 user_request: input,
                 model_name: selectedModel

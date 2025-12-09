@@ -3,7 +3,7 @@ import asyncio
 import logging
 import httpx
 from typing import AsyncGenerator
-from fastapi import APIRouter, HTTPException, Depends, Body, Request
+from fastapi import APIRouter, HTTPException, Depends, Body, Request, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -14,21 +14,21 @@ from src.app.domain.enums import ProcessingStatus
 from src.app.core.database import AsyncSessionLocal
 from src.app.services.history import HistoryService
 from src.app.services.llm_factory import CloudRuLLMService
+from src.app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-async def event_generator(request_body: TestGenerationRequest, app_state) -> AsyncGenerator[str, None]:
+async def event_generator(request_body: TestGenerationRequest, session_id: str, app_state) -> AsyncGenerator[str, None]:
     agent_graph = app_state.agent_graph
     
     async with AsyncSessionLocal() as db:
-        logger.info(f"Starting generation for request: {request_body.user_request[:50]}...")
+        logger.info(f"Starting generation for user {session_id[:6]}...")
         history_service = HistoryService(db)
         
-        run_record = await history_service.create_run(request_body.user_request)
+        run_record = await history_service.create_run(request_body.user_request, session_id)
         run_id = run_record.id
-        logger.info(f"Run ID created: {run_id}")
         
         config = {"configurable": {"thread_id": str(run_id)}}
         
@@ -50,9 +50,7 @@ async def event_generator(request_body: TestGenerationRequest, app_state) -> Asy
         final_type = None
 
         try:
-            logger.info("Starting agent graph stream...")
             async for output in agent_graph.astream(initial_state, config=config):
-                logger.debug(f"Graph output received: {output.keys()}")
                 for node_name, state_update in output.items():
                     if "logs" in state_update:
                         for log_msg in state_update["logs"]:
@@ -79,12 +77,10 @@ async def event_generator(request_body: TestGenerationRequest, app_state) -> Asy
 
                     await asyncio.sleep(0.1)
 
-            logger.info(f"Agent graph finished with status: {final_status}")
-            
             if final_status == ProcessingStatus.COMPLETED:
                 yield f"data: {json.dumps({'type': 'finish', 'content': 'done'})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'error', 'content': 'Failed to generate valid code after maximum attempts.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'content': 'Failed to generate valid code.'})}\n\n"
             
             await history_service.update_run(
                 run_id=run_id,
@@ -95,8 +91,7 @@ async def event_generator(request_body: TestGenerationRequest, app_state) -> Asy
 
         except Exception as e:
             logger.error(f"Generation failed: {e}", exc_info=True)
-            err_msg = str(e)
-            err_data = json.dumps({"type": "error", "content": err_msg})
+            err_data = json.dumps({"type": "error", "content": str(e)})
             yield f"data: {err_data}\n\n"
             
             await history_service.update_run(
@@ -105,9 +100,13 @@ async def event_generator(request_body: TestGenerationRequest, app_state) -> Asy
             )
 
 @router.post("/generate")
-async def generate_test_stream(request: Request, body: TestGenerationRequest):
+async def generate_test_stream(
+    request: Request, 
+    body: TestGenerationRequest,
+    x_session_id: str = Header(..., alias="X-Session-ID")
+):
     return StreamingResponse(
-        event_generator(body, request.app.state),
+        event_generator(body, x_session_id, request.app.state),
         media_type="text/event-stream"
     )
 
@@ -138,9 +137,6 @@ async def enhance_prompt(request: EnhanceRequest):
 
 @router.get("/models")
 async def list_models():
-    """
-    Proxy to Cloud.ru to fetch available models.
-    """
     settings = get_settings()
     url = f"{settings.CLOUD_RU_BASE_URL}/models"
     headers = {"Authorization": f"Bearer {settings.CLOUD_RU_API_KEY.get_secret_value()}"}
@@ -151,5 +147,4 @@ async def list_models():
             resp.raise_for_status()
             return resp.json()
     except Exception as e:
-        logger.error(f"Failed to fetch models: {e}")
         raise HTTPException(status_code=500, detail=str(e))

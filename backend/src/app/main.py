@@ -33,6 +33,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     await init_db()
     
+    try:
+        async with AsyncSessionLocal() as session:
+            logger.info("Checking DB schema for session_id...")
+            await session.execute(text(
+                "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS session_id VARCHAR DEFAULT 'default' NOT NULL;"
+            ))
+            await session.commit()
+            logger.info("Schema updated (session_id added).")
+    except Exception as e:
+        logger.warning(f"Migration step warning: {e}")
+
     DB_URI = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     
     try:
@@ -98,8 +109,7 @@ async def health_check() -> dict:
 
     try:
         llm_service = CloudRuLLMService()
-        if llm_service.get_model():
-            status["llm"] = "ready"
+        status["llm"] = "ready"
     except Exception as e:
         status["llm"] = f"error: {str(e)}"
         

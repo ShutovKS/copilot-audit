@@ -101,6 +101,9 @@ export const AVAILABLE_MODELS: ModelInfo[] = [
 const DEFAULT_MODEL = 'Qwen/Qwen3-Coder-480B-A35B-Instruct';
 
 interface AppState {
+  sessionId: string;
+  setSessionId: (id: string) => void;
+
   input: string;
   setInput: (val: string) => void;
   
@@ -130,6 +133,9 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set, _) => ({
+      sessionId: crypto.randomUUID(),
+      setSessionId: (sessionId) => set({ sessionId }),
+
       input: '',
       setInput: (input) => set({ input }),
       
@@ -165,9 +171,13 @@ export const useAppStore = create<AppState>()(
       name: 'app-storage',
       partialize: (state) => ({ 
           editorSettings: state.editorSettings, 
-          selectedModel: state.selectedModel 
+          selectedModel: state.selectedModel,
+          sessionId: state.sessionId 
       }),
       onRehydrateStorage: () => (state) => {
+          if (state && !state.sessionId) {
+              state.setSessionId(crypto.randomUUID());
+          }
           if (state && !AVAILABLE_MODELS.some(m => m.id === state.selectedModel)) {
               state.setSelectedModel(DEFAULT_MODEL);
           }

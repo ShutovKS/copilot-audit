@@ -6,6 +6,7 @@ class TestRun(Base):
     __tablename__ = "test_runs"
 
     id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, index=True, nullable=False, default="default")
     user_request = Column(Text, nullable=False)
     test_type = Column(String, nullable=True)
     status = Column(String, default="PENDING")

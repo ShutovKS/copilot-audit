@@ -1,4 +1,4 @@
-import { X, Server, Database, BrainCircuit, CheckCircle2, XCircle, RefreshCw, Loader2, Type, LayoutTemplate, Cpu, Sparkles, Box, Check, Monitor } from 'lucide-react';
+import { X, Server, Database, BrainCircuit, CheckCircle2, XCircle, RefreshCw, Loader2, Type, LayoutTemplate, Cpu, Sparkles, Box, Check, Key, Copy } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAppStore, AVAILABLE_MODELS } from '../entities/store';
 
@@ -34,10 +34,11 @@ const Toggle = ({ value, onChange }: { value: boolean, onChange: (v: boolean) =>
 );
 
 export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
-    const { editorSettings, updateEditorSettings, selectedModel, setSelectedModel } = useAppStore();
+    const { editorSettings, updateEditorSettings, selectedModel, setSelectedModel, sessionId, setSessionId } = useAppStore();
     const [status, setStatus] = useState<SystemStatus | null>(null);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'system' | 'editor' | 'model'>('system');
+    const [activeTab, setActiveTab] = useState<'system' | 'model' | 'editor' | 'account'>('system');
+    const [copied, setCopied] = useState(false);
 
     const checkHealth = async () => {
         setLoading(true);
@@ -59,6 +60,12 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
         if (isOpen && activeTab === 'system') checkHealth();
     }, [isOpen, activeTab]);
 
+    const handleCopySession = () => {
+        navigator.clipboard.writeText(sessionId);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -69,6 +76,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                         <TabButton active={activeTab === 'system'} onClick={() => setActiveTab('system')}>System</TabButton>
                         <TabButton active={activeTab === 'model'} onClick={() => setActiveTab('model')}>AI Models</TabButton>
                         <TabButton active={activeTab === 'editor'} onClick={() => setActiveTab('editor')}>Editor</TabButton>
+                        <TabButton active={activeTab === 'account'} onClick={() => setActiveTab('account')}>Account</TabButton>
                      </div>
                      <button onClick={onClose} className="text-muted hover:text-white transition-colors p-2"><X size={20}/></button>
                 </div>
@@ -205,9 +213,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                                         ))}
                                     </div>
                                 </div>
-
                                 <div className="h-px bg-white/5" />
-
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-zinc-400 border border-white/5">
@@ -218,28 +224,47 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                                             <div className="text-xs text-muted">Показывать карту кода справа</div>
                                         </div>
                                     </div>
-                                    <Toggle 
-                                        value={editorSettings.minimap} 
-                                        onChange={(v) => updateEditorSettings({ minimap: v })} 
-                                    />
+                                    <Toggle value={editorSettings.minimap} onChange={(v) => updateEditorSettings({ minimap: v })} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'account' && (
+                        <div className="p-8">
+                            <div className="p-6 bg-[#18191d] rounded-2xl border border-white/5">
+                                <div className="flex items-center gap-4 mb-6">
+                                    <div className="w-12 h-12 rounded-xl bg-[#00b67a]/10 flex items-center justify-center text-[#00b67a] border border-[#00b67a]/20">
+                                        <Key size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-white">Session Key Access</h3>
+                                        <p className="text-xs text-muted">Используйте этот ключ для доступа к своей истории тестов с других устройств.</p>
+                                    </div>
                                 </div>
 
-                                <div className="h-px bg-white/5" />
-
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-zinc-400 border border-white/5">
-                                            <Monitor size={20} />
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-bold text-white">Перенос строк</div>
-                                            <div className="text-xs text-muted">Автоматически переносить длинные строки</div>
-                                        </div>
+                                <div className="bg-black/30 p-4 rounded-xl border border-white/5">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Ваш уникальный ключ сессии (UUID)</label>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            value={sessionId} 
+                                            onChange={(e) => setSessionId(e.target.value)}
+                                            className="flex-1 bg-transparent text-sm font-mono text-white outline-none placeholder:text-zinc-700"
+                                            placeholder="Paste your session UUID here..."
+                                        />
+                                        <button 
+                                            onClick={handleCopySession}
+                                            className="p-2 hover:bg-white/10 rounded-lg text-muted hover:text-white transition-colors"
+                                            title="Copy Key"
+                                        >
+                                            {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+                                        </button>
                                     </div>
-                                    <Toggle 
-                                        value={editorSettings.wordWrap === 'on'} 
-                                        onChange={(v) => updateEditorSettings({ wordWrap: v ? 'on' : 'off' })} 
-                                    />
+                                </div>
+
+                                <div className="mt-4 flex gap-3 text-[11px] text-zinc-500">
+                                    <p>⚠️ Храните этот ключ в безопасности. Любой, у кого он есть, может видеть вашу историю генераций.</p>
                                 </div>
                             </div>
                         </div>

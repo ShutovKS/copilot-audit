@@ -1,9 +1,9 @@
-import { AlertTriangle, X, RefreshCw, Settings2, Sparkles } from 'lucide-react';
-import { useAppStore } from '../entities/store';
+import { AlertTriangle, X, RefreshCw, Settings2, Sparkles, BrainCircuit } from 'lucide-react';
+import { useAppStore, AVAILABLE_MODELS } from '../entities/store';
 import { useState, useEffect } from 'react';
 
 export const ErrorSuggestionModal = () => {
-    const { status, setStatus, error } = useAppStore();
+    const { status, setStatus, selectedModel, setSelectedModel, logs } = useAppStore();
     const [isOpen, setIsOpen] = useState(false);
 
     useEffect(() => {
@@ -17,7 +17,19 @@ export const ErrorSuggestionModal = () => {
         setStatus('idle');
     };
 
+    const handleSwitchModel = () => {
+        setSelectedModel('Qwen/Qwen3-Coder-480B-A35B-Instruct');
+        handleClose();
+    };
+
     if (!isOpen) return null;
+
+    const currentModelInfo = AVAILABLE_MODELS.find(m => m.id === selectedModel);
+    const isFreeModel = currentModelInfo?.isFree || selectedModel.includes('Lite') || selectedModel.includes('GigaChat');
+    
+    const logText = logs.join(' ').toLowerCase();
+    const isContextError = logText.includes('context') || logText.includes('length') || logText.includes('token');
+    const isNetworkError = logText.includes('timeout') || logText.includes('connection') || logText.includes('500');
 
     return (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6 animate-in fade-in duration-300">
@@ -33,33 +45,58 @@ export const ErrorSuggestionModal = () => {
                     <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center">
                         <AlertTriangle size={20} className="text-error" />
                     </div>
-                    <h3 className="text-lg font-bold text-white">Генерация не удалась</h3>
+                    <div>
+                        <h3 className="text-lg font-bold text-white">Генерация остановлена</h3>
+                        <p className="text-xs text-error">{currentModelInfo?.name || selectedModel}</p>
+                    </div>
                 </div>
 
                 <p className="text-sm text-zinc-300 mb-6 leading-relaxed">
-                    Агент столкнулся с критической ошибкой. Это часто происходит из-за перегрузки бесплатной модели или сложного запроса.
+                    {isNetworkError 
+                        ? "Возникли проблемы с подключением к API модели. Это может быть временный сбой Cloud.ru."
+                        : "Агент не смог сгенерировать валидный код за отведенное количество попыток."
+                    }
                 </p>
 
                 <div className="space-y-3">
-                    <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-start gap-3">
-                        <Settings2 size={16} className="text-[#00b67a] mt-0.5" />
-                        <div>
-                            <h4 className="text-xs font-bold text-white mb-1">Смените модель</h4>
-                            <p className="text-[10px] text-muted">
-                                Бесплатные модели (GigaChat 3) менее стабильны. Попробуйте <b>Qwen 3 Coder</b> в настройках.
-                            </p>
+                    {isFreeModel && (
+                        <div 
+                            onClick={handleSwitchModel}
+                            className="p-3 bg-white/5 hover:bg-white/10 cursor-pointer transition-colors rounded-xl border border-white/5 flex items-start gap-3 group"
+                        >
+                            <Settings2 size={16} className="text-[#00b67a] mt-0.5" />
+                            <div>
+                                <h4 className="text-xs font-bold text-white mb-1 group-hover:text-[#00b67a] transition-colors">Смените модель на Qwen 3 Coder</h4>
+                                <p className="text-[10px] text-muted">
+                                    Вы используете экспериментальную модель. <b>Qwen 3 Coder</b> лучше справляется со сложным кодом.
+                                </p>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
-                    <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-start gap-3">
-                        <Sparkles size={16} className="text-purple-400 mt-0.5" />
-                        <div>
-                            <h4 className="text-xs font-bold text-white mb-1">Упростите запрос</h4>
-                            <p className="text-[10px] text-muted">
-                                Попробуйте использовать кнопку <b>AI Enhance</b> для структурирования задачи.
-                            </p>
+                    {(isContextError || !isFreeModel) && (
+                        <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-start gap-3">
+                            <Sparkles size={16} className="text-purple-400 mt-0.5" />
+                            <div>
+                                <h4 className="text-xs font-bold text-white mb-1">Упростите запрос</h4>
+                                <p className="text-[10px] text-muted">
+                                    Попробуйте разбить задачу на несколько частей или используйте <b>AI Enhance</b> для структурирования.
+                                </p>
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                     {!isNetworkError && !isContextError && !isFreeModel && (
+                        <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-start gap-3">
+                            <BrainCircuit size={16} className="text-blue-400 mt-0.5" />
+                            <div>
+                                <h4 className="text-xs font-bold text-white mb-1">Сложная логика</h4>
+                                <p className="text-[10px] text-muted">
+                                    Агент запутался в проверках. Попробуйте добавить в запрос явные шаги (Step 1, Step 2).
+                                </p>
+                            </div>
+                        </div>
+                     )}
                 </div>
 
                 <div className="mt-6 flex gap-3">
