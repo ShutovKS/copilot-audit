@@ -1,11 +1,15 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from psycopg_pool import AsyncConnectionPool
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
 from src.app.domain.models import TestRun
 
 class HistoryService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, connection_pool: AsyncConnectionPool = None):
         self.db = db
+        self.connection_pool = connection_pool
 
     async def create_run(self, user_request: str, session_id: str) -> TestRun:
         run = TestRun(
@@ -30,7 +34,7 @@ class HistoryService:
             await self.db.refresh(run)
         return run
 
-    async def get_all(self, session_id: str, limit: int = 10) -> List[TestRun]:
+    async def get_all(self, session_id: str, limit: int = 20) -> List[TestRun]:
         result = await self.db.execute(
             select(TestRun)
             .where(TestRun.session_id == session_id)
@@ -45,3 +49,22 @@ class HistoryService:
             .where(TestRun.id == run_id, TestRun.session_id == session_id)
         )
         return result.scalars().first()
+
+    async def get_run_details(self, run_id: int, session_id: str) -> Optional[Dict[str, Any]]:
+        run = await self.get_by_id(run_id, session_id)
+        if not run:
+            return None
+
+        if not self.connection_pool:
+            return {"run": run, "messages": []}
+            
+        checkpointer = AsyncPostgresSaver(self.connection_pool)
+        config = {"configurable": {"thread_id": str(run_id)}}
+        
+        try:
+            checkpoint = await checkpointer.aget(config)
+            messages = checkpoint['channel_values']['messages'] if checkpoint and 'channel_values' in checkpoint and 'messages' in checkpoint['channel_values'] else []
+        except Exception:
+            messages = []
+            
+        return {"run": run, "messages": messages}

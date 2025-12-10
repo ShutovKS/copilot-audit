@@ -157,15 +157,14 @@ ERROR ANALYSIS STRATEGY:
 1. **TimeoutError / AssertionError (Locator)**: 
    - The locator used (`get_by_role`, `get_by_text`) failed to find the element.
    - **ACTION**: CHANGE the locator strategy. If `get_by_role` failed, try `page.locator('css_selector')` or `get_by_text`.
-   - Look at the 'Call log' in the error. It shows what Playwright tried to find. Avoid that specific failing pattern.
    
-2. **AttributeError (POM)**:
-   - You called a method on the Page Object that doesn't exist.
-   - **ACTION**: Define the missing method in the Class.
+2. **Allure Compliance (CRITICAL)**:
+   - If the error log mentions "missing @allure...", YOU MUST ADD THEM.
+   - Ensure Class has `@allure.feature` and `@allure.story`.
+   - Ensure Functions have `@allure.title`, `@allure.tag`, `@allure.label`.
 
-3. **Logic Error**: 
-   - Assertion failed (Actual != Expected).
-   - **ACTION**: Adjust the assertion or the logic to match reality (e.g. maybe price is 0 initially).
+3. **AttributeError (POM)**:
+   - Define missing methods in Page Classes.
 
 OUTPUT:
 Return the FULLY CORRECTED Python code (Imports + Classes + Tests).

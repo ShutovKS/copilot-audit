@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { History, CheckCircle2, AlertCircle } from 'lucide-react';
-import { useAppStore } from '../entities/store';
+import { History, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { useAppStore, type ChatMessage } from '../entities/store';
 
 interface TestRun {
     id: number;
@@ -11,10 +11,20 @@ interface TestRun {
     test_plan: string | null;
 }
 
+interface BackendMessage {
+    type: 'human' | 'ai' | 'system';
+    content: string;
+}
+
+interface TestRunDetails extends TestRun {
+    messages: BackendMessage[];
+}
+
 export const HistoryList = () => {
-  const { setInput, setCode, setTestPlan, setCurrentRunId, sessionId } = useAppStore();
+  const { setInput, setCode, setTestPlan, setCurrentRunId, setMessages, clearLogs, sessionId, showToast } = useAppStore();
   const [history, setHistory] = useState<TestRun[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingRun, setLoadingRun] = useState<number | null>(null);
 
   const fetchHistory = async () => {
       setLoading(true);
@@ -28,7 +38,11 @@ export const HistoryList = () => {
         if (res.ok) {
             const data = await res.json();
             setHistory(data);
+        } else {
+            showToast('Failed to load history', 'error');
         }
+      } catch (e) {
+        showToast(`Network Error: ${e.message}`, 'error');
       } finally {
           setLoading(false);
       }
@@ -40,11 +54,45 @@ export const HistoryList = () => {
       }
   }, [sessionId]);
 
-  const loadRun = (run: TestRun) => {
-      if (run.user_request) setInput(run.user_request);
-      if (run.generated_code) setCode(run.generated_code);
-      if (run.test_plan) setTestPlan(run.test_plan);
-      setCurrentRunId(run.id);
+  const loadRun = async (run: TestRun) => {
+      setLoadingRun(run.id);
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+        const res = await fetch(`${API_URL}/history/${run.id}`, {
+            headers: {
+                'X-Session-ID': sessionId
+            }
+        });
+
+        if (res.ok) {
+            const data: TestRunDetails = await res.json();
+            
+            // Reset state
+            clearLogs();
+
+            // Set new state
+            setInput('');
+            setCode(data.generated_code || '# No code was generated in this run.');
+            setTestPlan(data.test_plan || '');
+            setCurrentRunId(data.id);
+
+            const mappedMessages: ChatMessage[] = data.messages.map((msg, index) => ({
+                id: `${data.id}-${index}`,
+                role: msg.type === 'human' ? 'user' : 'assistant',
+                content: msg.content,
+                timestamp: new Date(data.created_at).getTime() + index
+            }));
+            setMessages(mappedMessages);
+
+            showToast(`Loaded session #${run.id}`, 'success');
+        } else {
+            showToast(`Failed to load session #${run.id}`, 'error');
+        }
+      } catch (e) {
+        showToast(`Network Error: ${e.message}`, 'error');
+      } finally {
+        setLoadingRun(null);
+      }
   };
 
   return (
@@ -54,7 +102,9 @@ export const HistoryList = () => {
                 <History size={16} className="text-muted" />
                 <h3 className="text-sm font-medium text-white">История</h3>
             </div>
-            <button onClick={fetchHistory} className="text-[10px] text-primary hover:underline">Обновить</button>
+            <button onClick={fetchHistory} className="text-[10px] text-primary hover:underline" disabled={loading}>
+                {loading ? 'Обновление...' : 'Обновить'}
+            </button>
         </div>
         
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
@@ -68,8 +118,13 @@ export const HistoryList = () => {
                 <div 
                     key={run.id} 
                     onClick={() => loadRun(run)}
-                    className="p-3 rounded-lg bg-[#18191d] hover:bg-[#2b2d33] cursor-pointer transition-colors border border-white/5 group"
+                    className="p-3 rounded-lg bg-[#18191d] hover:bg-[#2b2d33] cursor-pointer transition-colors border border-white/5 group relative"
                 >
+                    {loadingRun === run.id && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <Loader2 size={16} className="text-white animate-spin" />
+                        </div>
+                    )}
                     <div className="flex justify-between items-start mb-1">
                         <span className="text-[10px] text-muted">
                             {new Date(run.created_at).toLocaleTimeString()} {new Date(run.created_at).toLocaleDateString()}

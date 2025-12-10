@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api, exportToGitLab } from '../shared/api/client';
 
 export const CodeEditor = () => {
-  const { code: storeCode, testPlan, editorSettings, addLog, status, currentRunId, addMessage, setStatus } = useAppStore();
+  const { code: storeCode, testPlan, editorSettings, addLog, status, currentRunId, sendMessage, setCode } = useAppStore();
   const [displayCode, setDisplayCode] = useState('');
   const [activeFile, setActiveFile] = useState<'code' | 'plan' | 'report'>('code');
   const [copied, setCopied] = useState(false);
@@ -27,18 +27,24 @@ export const CodeEditor = () => {
 
   useEffect(() => {
       if (storeCode !== targetCodeRef.current) {
-          if (targetCodeRef.current === '' || storeCode.length < targetCodeRef.current.length) {
-             setDisplayCode('');
-             currentIndexRef.current = 0;
+          const isAppend = storeCode.startsWith(targetCodeRef.current) && targetCodeRef.current !== '';
+          
+          if (!isAppend) {
+             setDisplayCode(storeCode.length > 500 ? storeCode : '');
+             currentIndexRef.current = storeCode.length > 500 ? storeCode.length : 0;
           }
+          
           targetCodeRef.current = storeCode;
-          if (!intervalRef.current) {
+          
+          if (!intervalRef.current && currentIndexRef.current < storeCode.length) {
               intervalRef.current = setInterval(() => {
                   const target = targetCodeRef.current;
-                  const current = currentIndexRef.current;
+                  let current = currentIndexRef.current;
+                  
                   if (current < target.length) {
-                      setDisplayCode(prev => prev + target.slice(current, current + 15));
-                      currentIndexRef.current += 15;
+                      const step = 25;
+                      setDisplayCode(prev => target.slice(0, current + step));
+                      currentIndexRef.current += step;
                   } else {
                       setDisplayCode(target);
                       if (intervalRef.current) {
@@ -46,7 +52,7 @@ export const CodeEditor = () => {
                           intervalRef.current = null;
                       }
                   }
-              }, 5);
+              }, 10);
           }
       }
   }, [storeCode]);
@@ -83,8 +89,7 @@ export const CodeEditor = () => {
           
           const logs = res.data.logs;
           if (logs && logs.trim()) {
-               addLog(`Pytest Execution Log:\
-${logs}`);
+               addLog(`Pytest Execution Log:${logs}`);
           }
           
           if (res.data.report_url) {
@@ -101,86 +106,18 @@ ${logs}`);
       }
   };
 
-  const handleAutoFix = async () => {
+  const handleAutoFix = () => {
       if (!lastErrorLogs || !currentRunId) return;
       
-      addMessage({
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: "Тесты упали. Почини код.",
-          timestamp: Date.now()
-      });
-
-      setStatus('processing');
-      const fixPayload = `[AUTO-FIX] \
-Failed Logs:\
-${lastErrorLogs}`;
+      // Hide the "Auto-Fix" button immediately
+      setLastErrorLogs(null);
       
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+      // Set a placeholder message in the editor
+      setCode("# Fixing code... please wait...");
       
-      try {
-          const response = await fetch(`${API_URL}/chat/message`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-Session-ID': useAppStore.getState().sessionId
-            },
-            body: JSON.stringify({ 
-                message: fixPayload,
-                model_name: useAppStore.getState().selectedModel,
-                run_id: currentRunId
-            })
-        });
-        
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        
-        if (reader) {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                // Properly handle chunk buffering
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\
-\
-');
-                
-                // Keep the last incomplete chunk in the buffer
-                buffer = lines.pop() || '';
-                
-                for (const line of lines) {
-                     if (line.startsWith('data: ')) {
-                         try {
-                             const data = JSON.parse(line.replace('data: ', ''));
-                             if (data.type === 'log') addLog(data.content);
-                             if (data.type === 'code') useAppStore.getState().setCode(data.content);
-                             if (data.type === 'finish') {
-                                 setStatus('success');
-                                 setLastErrorLogs(null);
-                                 addMessage({
-                                     id: crypto.randomUUID(),
-                                     role: 'assistant',
-                                     content: 'Я исправил код на основе логов ошибки. Попробуйте запустить снова.',
-                                     timestamp: Date.now()
-                                 });
-                             }
-                             if (data.type === 'error') {
-                                 addLog(`System Error: ${data.content}`);
-                                 setStatus('error');
-                             }
-                         } catch(e) {
-                             console.error("Parse error", e, line);
-                         }
-                     }
-                }
-            }
-        }
-      } catch (e) {
-          addLog(`Error fixing: ${e}`);
-          setStatus('error');
-      }
+      // Construct the payload and send it via the centralized store action
+      const fixPayload = `[AUTO-FIX] Failed Logs:${lastErrorLogs}`;
+      sendMessage(fixPayload);
   };
 
   const handleExport = async () => {
@@ -312,6 +249,7 @@ ${lastErrorLogs}`;
         {isModalOpen && (
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div className="bg-[#1f2126] w-full max-w-md rounded-2xl border border-white/10 shadow-2xl p-6">
+                    {/* Export Modal Content (Same as before) */}
                     <div className="flex justify-between items-center mb-6">
                         <div className="flex items-center gap-2">
                             <GitMerge className="text-secondary" />

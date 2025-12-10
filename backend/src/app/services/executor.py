@@ -115,7 +115,8 @@ filterwarnings =
                 environment={"HEADLESS": "true"},
                 shm_size="2g",
                 detach=True,
-                labels={"created_by": "testops-forge"}
+                labels={"created_by": "testops-forge"},
+                log_config={'type': 'json-file'}
             )
 
             result = container.wait()

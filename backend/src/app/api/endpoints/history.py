@@ -1,8 +1,9 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from datetime import datetime
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
 from src.app.core.database import get_db
 from src.app.services.history import HistoryService
@@ -21,6 +22,14 @@ class TestRunSchema(BaseModel):
     class Config:
         from_attributes = True
 
+class ChatMessageSchema(BaseModel):
+    type: str
+    content: str
+
+class TestRunDetailsSchema(TestRunSchema):
+    messages: List[ChatMessageSchema] = []
+
+
 @router.get("/", response_model=List[TestRunSchema])
 async def get_history(
     db: AsyncSession = Depends(get_db), 
@@ -29,14 +38,28 @@ async def get_history(
     service = HistoryService(db)
     return await service.get_all(x_session_id)
 
-@router.get("/{run_id}", response_model=TestRunSchema)
+@router.get("/{run_id}", response_model=TestRunDetailsSchema)
 async def get_run(
     run_id: int, 
+    request: Request,
     db: AsyncSession = Depends(get_db),
     x_session_id: str = Header(..., alias="X-Session-ID")
 ):
-    service = HistoryService(db)
-    run = await service.get_by_id(run_id, x_session_id)
-    if not run:
+    # Pass the connection pool from the app state to the service
+    connection_pool = request.app.state.connection_pool
+    service = HistoryService(db, connection_pool)
+    
+    run_details = await service.get_run_details(run_id, x_session_id)
+    if not run_details:
         raise HTTPException(status_code=404, detail="Run not found or access denied")
-    return run
+    
+    # Convert BaseMessage objects to a serializable format
+    messages_serializable = []
+    for msg in run_details.get("messages", []):
+        if isinstance(msg, (HumanMessage, AIMessage)):
+            messages_serializable.append({"type": msg.type, "content": msg.content})
+
+    run_data = run_details['run'].__dict__
+    run_data['messages'] = messages_serializable
+    
+    return TestRunDetailsSchema(**run_data)

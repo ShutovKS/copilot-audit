@@ -63,20 +63,19 @@ def _isolate_namespaces(code: str, index: int) -> str:
     
     try:
         tree = ast.parse(code)
+        # Rename ALL classes, including Test classes, to avoid collisions in batch mode
         class_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
     except SyntaxError:
-        # Fallback to empty if code is broken (should be caught by validator anyway)
         return code
 
     modified_code = code
-    # Sort by length desc to avoid replacing substrings (e.g. TestCalc vs TestCalculator)
+    # Sort by length desc to avoid replacing substrings
     class_names.sort(key=len, reverse=True)
     
     for name in class_names:
-        if "Test" in name: continue # Don't rename Test classes
+        # REMOVED: if "Test" in name: continue 
+        # We MUST rename Test classes too because they often have generic names like TestCalculator
         
-        # Regex to match whole word usage of the class name
-        # This prevents replacing 'if' or 'try' unless there is literally a 'class if'
         pattern = r"\b" + name + r"\b"
         modified_code = re.sub(pattern, f"{name}{suffix}", modified_code)
         

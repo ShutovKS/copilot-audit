@@ -31,8 +31,11 @@ async def analyst_node(state: AgentState) -> Dict[str, Any]:
     # 0. Auto-Fix Check
     if "[AUTO-FIX]" in raw_input:
         logger.info("🔧 [Analyst] Detected Auto-Fix request. Redirecting to Debugger.")
+        # CRITICAL FIX: Clear scenarios to prevent Batch mode re-triggering.
+        # We want the Coder (Debugger) to fix the existing combined code as a whole.
         return {
             "status": ProcessingStatus.FIXING,
+            "scenarios": [], 
             "logs": ["System: Detected Auto-Fix request. Handing over to Debugger."]
         }
 
@@ -152,17 +155,24 @@ async def coder_node(state: AgentState) -> Dict[str, Any]:
         ]
         log_msg = "Coder: Generating initial code..."
 
-    response = await llm.ainvoke(messages)
-    code = str(response.content).replace("```python", "").replace("```", "").strip()
-    logger.info(f"✅ [Coder] Code generated ({len(code)} chars).")
+    try:
+        response = await llm.ainvoke(messages)
+        code = str(response.content).replace("```python", "").replace("```", "").strip()
+        logger.info(f"✅ [Coder] Code generated ({len(code)} chars).")
 
-    return {
-        "generated_code": code,
-        "validation_error": None,
-        "status": ProcessingStatus.VALIDATING,
-        "attempts": state.get("attempts", 0) + 1,
-        "logs": [log_msg]
-    }
+        return {
+            "generated_code": code,
+            "validation_error": None,
+            "status": ProcessingStatus.VALIDATING,
+            "attempts": state.get("attempts", 0) + 1,
+            "logs": [log_msg]
+        }
+    except Exception as e:
+        logger.error(f"❌ [Coder] LLM Generation Failed: {e}")
+        return {
+            "status": ProcessingStatus.FAILED,
+            "logs": [f"Coder: Critical LLM Error. The AI Provider (Cloud.ru) returned an error: {str(e)}"]
+        }
 
 
 async def reviewer_node(state: AgentState) -> Dict[str, Any]:
@@ -196,4 +206,15 @@ async def batch_node(state: AgentState) -> Dict[str, Any]:
         "generated_code": combined_code,
         "status": ProcessingStatus.COMPLETED,
         "logs": [f"Batch: Successfully generated {len(results)} tests in parallel."]
+    }
+
+async def final_output_node(state: AgentState) -> Dict[str, Any]:
+    """
+    A final node to ensure the last state is explicitly sent to the client.
+    """
+    logger.info("✅ [Finalizer] Graph complete. Streaming final state.")
+    return {
+        "status": ProcessingStatus.COMPLETED,
+        "generated_code": state.get("generated_code", ""),
+        "logs": ["System: All tasks complete. Final output dispatched."]
     }

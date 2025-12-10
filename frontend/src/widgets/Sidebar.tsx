@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { analyzeSourceCode, analyzeGitRepo } from '../shared/api/client';
 
 export const Sidebar = () => {
-  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status, selectedModel, sessionId, showToast, setCurrentRunId, currentRunId, messages, addMessage } = useAppStore();
+  const { input, setInput, clearLogs, status, messages, setCurrentRunId, sendMessage } = useAppStore();
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showGitInput, setShowGitInput] = useState(false);
@@ -21,99 +21,12 @@ export const Sidebar = () => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
   
-  const handleSendMessage = async () => {
-    if (!input.trim()) return;
+  const handleSendMessage = () => {
+    const message = useAppStore.getState().input;
+    if (!message.trim()) return;
     
-    const userMsg = input;
     setInput(''); // Clear input immediately
-    
-    // Add User Message
-    addMessage({
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: userMsg,
-        timestamp: Date.now()
-    });
-
-    setStatus('processing');
-    // Only clear logs if starting a NEW run
-    if (!currentRunId) clearLogs();
-    
-    addLog(`System: Sending message to Chat Agent...`);
-
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-    try {
-        const response = await fetch(`${API_URL}/chat/message`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-Session-ID': sessionId
-            },
-            body: JSON.stringify({ 
-                message: userMsg,
-                model_name: selectedModel,
-                run_id: currentRunId // Pass current Run ID to maintain context
-            })
-        });
-        if (!response.ok) throw new Error("API Error");
-        
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        if (reader) {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                     if (line.startsWith('data: ')) {
-                         try {
-                             const data = JSON.parse(line.replace('data: ', ''));
-                             
-                             if (data.type === 'meta') {
-                                 if (data.run_id) setCurrentRunId(data.run_id);
-                             }
-                             if (data.type === 'log') {
-                                 addLog(data.content);
-                             }
-                             if (data.type === 'code') setCode(data.content);
-                             if (data.type === 'plan') setTestPlan(data.content);
-                             if (data.type === 'status' && data.content === 'COMPLETED') setStatus('success');
-                             if (data.type === 'finish') {
-                                 setStatus('success');
-                                 showToast("Code Updated Successfully!", 'success');
-                                 // Add AI Response Message
-                                 addMessage({
-                                     id: crypto.randomUUID(),
-                                     role: 'assistant',
-                                     content: 'Готово! Я обновил код и план тестирования.',
-                                     timestamp: Date.now()
-                                 });
-                             }
-                             if (data.type === 'error') {
-                                 setStatus('error');
-                                 addLog(`Error: ${data.content}`);
-                                 addMessage({
-                                     id: crypto.randomUUID(),
-                                     role: 'assistant',
-                                     content: `Ошибка: ${data.content}`,
-                                     timestamp: Date.now()
-                                 });
-                             }
-                         } catch(e) {}
-                     }
-                }
-            }
-        }
-    } catch (e) {
-        setStatus('error');
-        addLog(`Error: ${e}`);
-    }
+    sendMessage(message);
   };
 
   // ... (Helpers remain same)
