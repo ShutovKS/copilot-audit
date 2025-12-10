@@ -11,5 +11,10 @@ class TestRun(Base):
     test_type = Column(String, nullable=True)
     status = Column(String, default="PENDING")
     generated_code = Column(Text, nullable=True)
+    
+    execution_status = Column(String, nullable=True)
+    report_url = Column(String, nullable=True)
+    execution_logs = Column(Text, nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

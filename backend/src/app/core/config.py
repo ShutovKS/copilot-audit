@@ -1,15 +1,13 @@
 from functools import lru_cache
 from typing import Literal
+from pathlib import Path
+import tempfile
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """
-    Application Configuration.
-    Validates environment variables on startup.
-    """
     ENVIRONMENT: Literal["dev", "prod", "test"] = "dev"
     PROJECT_NAME: str = "TestOps Evolution Forge"
 
@@ -17,10 +15,15 @@ class Settings(BaseSettings):
     CLOUD_RU_BASE_URL: str = "https://foundation-models.api.cloud.ru/v1"
     MODEL_NAME: str = "Qwen/Qwen3-Coder-480B-A35B-Instruct"
 
-    DATABASE_URL: str = "postgresql+asyncpg://testops:testops@db:5432/testops"
+    DATABASE_URL: str = "postgresql+asyncpg://testops:testops@localhost:5432/testops"
     
-    CHROMA_HOST: str = "chromadb"
-    CHROMA_PORT: int = 8000
+    CHROMA_HOST: str = "localhost"
+    CHROMA_PORT: int = 8001
+    
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
+    REPORTS_DIR: Path = BASE_DIR / "static" / "reports"
+    
+    TEMP_DIR: Path = Path(tempfile.gettempdir()) / "testops_execution"
 
     model_config = SettingsConfigDict(
         env_file=".env",

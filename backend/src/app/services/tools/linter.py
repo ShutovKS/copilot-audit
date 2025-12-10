@@ -6,11 +6,6 @@ from typing import Tuple, Optional, Set, List
 
 
 class CodeValidator:
-    """
-    The 'Reviewer' Agent's main tool.
-    Performs a pipeline: Auto-Fix -> Security -> Lint -> Strict Allure Compliance -> Test Collection.
-    Returns: (is_valid, log, fixed_code)
-    """
 
     BANNED_IMPORTS = {'os', 'subprocess', 'shutil', 'sys', 'builtins'}
     BANNED_FUNCTIONS = {'eval', 'exec', 'compile'}
@@ -22,7 +17,6 @@ class CodeValidator:
         except SyntaxError as e:
             return False, f"AST Syntax Error: {e}", None
 
-        # 1. Security Check
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for n in node.names:
@@ -35,44 +29,42 @@ class CodeValidator:
                 if isinstance(node.func, ast.Name) and node.func.id in CodeValidator.BANNED_FUNCTIONS:
                     return False, f"Security Error: Forbidden function '{node.func.id}'.", None
 
-        # 2. Strict Allure TestOps Compliance Check
         allure_errors = CodeValidator._check_allure_compliance(tree)
         if allure_errors:
             return False, "Allure Strict Compliance Failed:\n" + "\n".join(allure_errors), code
 
-        # 3. Formatting & Linter (Ruff)
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tmp:
             tmp.write(code)
             tmp_path = tmp.name
 
         fixed_code = code
 
         try:
-            # Auto-Fix import sorting and common issues
             subprocess.run(
                 ["ruff", "check", tmp_path, "--fix", "--select", "E,F,I,UP,B", "--ignore", "F841"],
-                capture_output=True
+                capture_output=True,
+                encoding="utf-8"
             )
-            subprocess.run(["ruff", "format", tmp_path], capture_output=True)
+            subprocess.run(["ruff", "format", tmp_path], capture_output=True, encoding="utf-8")
 
-            with open(tmp_path, "r") as f:
+            with open(tmp_path, "r", encoding="utf-8") as f:
                 fixed_code = f.read()
 
-            # Strict Linting
             ruff_res = subprocess.run(
                 ["ruff", "check", tmp_path, "--select", "E9,F63,F7,F82", "--output-format", "full"],
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8"
             )
             if ruff_res.returncode != 0:
                 error_output = ruff_res.stdout or ruff_res.stderr
                 return False, f"Linter Error (Ruff):\n{error_output}", fixed_code
 
-            # 4. Pytest Collection Check
             pytest_res = subprocess.run(
                 ["pytest", tmp_path, "--collect-only", "-q"],
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8"
             )
             if pytest_res.returncode != 0:
                 return False, f"Pytest Collection Error:\n{pytest_res.stdout}\n{pytest_res.stderr}", fixed_code
@@ -88,10 +80,6 @@ class CodeValidator:
 
     @staticmethod
     def _check_allure_compliance(tree: ast.Module) -> List[str]:
-        """
-        Enforces strict Allure TestOps metadata requirements via AST analysis.
-        Iterates over the Module body to handle both Classes and Standalone Functions.
-        """
         errors = []
         
         for node in tree.body:
@@ -147,9 +135,6 @@ class CodeValidator:
 
     @staticmethod
     def _has_label(node: [ast.ClassDef, ast.FunctionDef], label_name: str) -> bool:
-        """
-        Checks for specific @allure.label("key", "value")
-        """
         for decorator in node.decorator_list:
             if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute):
                 if decorator.func.value.id == "allure" and decorator.func.attr == "label":
