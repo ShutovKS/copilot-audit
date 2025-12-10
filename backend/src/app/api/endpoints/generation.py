@@ -46,6 +46,7 @@ async def event_generator(request_body: TestGenerationRequest, session_id: str, 
         }
 
         final_code = ""
+        final_plan_str = ""
         final_status = ProcessingStatus.FAILED
         final_type = None
 
@@ -59,6 +60,7 @@ async def event_generator(request_body: TestGenerationRequest, session_id: str, 
                     
                     if "test_plan" in state_update and state_update["test_plan"]:
                         plan_str = "\n".join(state_update["test_plan"])
+                        final_plan_str = plan_str
                         data = json.dumps({"type": "plan", "content": plan_str})
                         yield f"data: {data}\n\n"
 
@@ -86,7 +88,8 @@ async def event_generator(request_body: TestGenerationRequest, session_id: str, 
                 run_id=run_id,
                 code=final_code,
                 status=final_status,
-                test_type=final_type
+                test_type=final_type,
+                test_plan=final_plan_str
             )
 
         except Exception as e:

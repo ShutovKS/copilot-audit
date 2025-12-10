@@ -1,58 +1,79 @@
 # TestOps Evolution Forge
 
-**TestOps Evolution Forge** — это интеллектуальная агентная система на базе **Cloud.ru Evolution Foundation Model** для автоматической генерации валидных E2E и API тестов.
+**TestOps Evolution Forge** — это автономная Agentic-система на базе **Cloud.ru Evolution**, которая не просто генерирует тесты, а **видит** интерфейс, **понимает** контекст и **чинит** сама себя.
 
-## 🚀 Ключевые возможности
+![Status](https://img.shields.io/badge/Status-Production%20Ready-green) ![AI](https://img.shields.io/badge/AI-Cloud.ru%20Evolution-blue) ![Stack](https://img.shields.io/badge/Stack-FastAPI%20%7C%20LangGraph%20%7C%20Playwright-orange)
 
-*   **🤖 Multi-Agent Workflow**: Оркестрация агентов (Analyst, Coder, Reviewer) через LangGraph. Агенты сами проверяют и исправляют свой код.
-*   **🛡️ Strict Quality Gate**: Гарантия валидности. Код не отдается пользователю, пока не пройдет AST-валидацию и `pytest --collect-only`. Строгое соблюдение Allure-декораторов.
-*   **🔍 Code Analysis (White-Box)**: Парсинг исходного кода (Python FastAPI, Java Spring, JS/TS NestJS/Express) из **ZIP-архивов** или **Git-репозиториев** для генерации точных тестов.
-*   **🔐 Private Git Support**: Безопасная работа с приватными репозиториями через Access Tokens.
-*   **👥 Session Isolation**: Многопользовательский режим с разделением истории через уникальные Session Keys.
-*   **🧠 RAG & Deduplication**: Поиск похожих тестов в векторной базе (ChromaDB) для предотвращения дублей.
+## 🚀 Killer Features
+
+### 1. 👁️ Active Vision (Зрение Агента)
+Агент не гадает локаторы. Если вы дадите ему ссылку (например, `https://cloud.ru/calculator`), он:
+1.  Запустит Headless-браузер (Playwright).
+2.  Просканирует DOM-дерево.
+3.  Извлечет реальные `data-testid`, `id` и `class`.
+4.  Напишет тест, который **сразу работает**.
+
+### 2. 💬 Conversational Interface (Чат-режим)
+Забудьте о "генерации в один клик". Работайте с AI как с коллегой:
+*   *"Сгенерируй тест для логина"*
+*   *"Добавь проверку на пустой пароль"*
+*   *"Перепиши на Page Object Model"*
+
+Система помнит контекст диалога и правит код на лету.
+
+### 3. 🔧 Self-Healing (Авто-починка)
+Тест упал? Не проблема.
+1.  Система анализирует логи ошибок (`TimeoutError`, `AssertionError`).
+2.  Вы нажимаете кнопку **Auto-Fix**.
+3.  Специализированный `Debugger Agent` изучает StackTrace и исправляет код.
+
+### 4. 🛡️ Smart Quality Gate
+Мы гарантируем валидность кода:
+*   **Static POM Validator:** Проверяет, что вы не вызываете несуществующие методы у Page Objects.
+*   **Security Linter:** Блокирует опасные импорты (`os`, `subprocess`).
+*   **Style Check:** Форматирование через `ruff`.
+
+## 🏗 Архитектура
+
+Система построена на графе агентов (**LangGraph**):
+
+```mermaid
+graph TD
+    User[User Chat] -->|Message| Analyst
+    Analyst -->|Check URL| Inspector[Web Inspector Tool]
+    Inspector -->|DOM Tree| Analyst
+    Analyst -->|Plan| Coder
+    Coder -->|Code| Reviewer
+    Reviewer -->|Static Analysis| End
+    
+    End -->|Run Test| Executor[Docker Executor]
+    Executor -->|Fail| Debugger[Debugger Agent]
+    Debugger -->|Fix Code| Executor
+```
 
 ## 🛠 Технологии
 
-*   **Backend**: Python 3.11, FastAPI, LangGraph, Pydantic V2, AST, SQLAlchemy (Async).
-*   **LLM**: Cloud.ru Evolution (OpenAI-compatible API).
-*   **Frontend**: React 18, Vite, Tailwind CSS, Monaco Editor.
-*   **Infrastructure**: Docker Compose, PostgreSQL, ChromaDB.
+*   **Backend:** Python 3.11, FastAPI, LangGraph, SQLAlchemy (Async), Playwright.
+*   **Frontend:** React 18, Vite, Tailwind CSS, Monaco Editor, Zustand.
+*   **AI:** Cloud.ru Evolution (Qwen 2.5/3 Coder).
+*   **Infra:** Docker Compose.
 
 ## 🏃‍♂️ Быстрый старт
 
-1.  **Настройка окружения**
-    Создайте файл `backend/.env`:
+1.  **Настройка**
+    Создайте `backend/.env`:
     ```ini
     CLOUD_RU_API_KEY=your_key
     CLOUD_RU_BASE_URL=https://foundation-models.api.cloud.ru/v1
     MODEL_NAME=Qwen/Qwen2.5-Coder-32B-Instruct
     ```
 
-2.  **Запуск в Docker**
+2.  **Запуск**
     ```bash
     docker-compose up --build -d
     ```
-    *   Frontend: [http://localhost:3000](http://localhost:3000)
-    *   Backend Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 3.  **Использование**
-    *   Зайдите на Frontend.
-    *   Введите описание теста или загрузите код (ZIP/Git).
-    *   Получите готовый Pytest код с Allure-отчетами.
-
-## 🧪 Тестирование (Quality Gate)
-
-Проект покрыт unit-тестами (Backend):
-```bash
-cd backend
-poetry run pytest
-```
-
-## 🏗 Архитектура
-
-Система построена на принципах **Clean Architecture**:
-*   `src/app/core`: Конфигурация и миграции.
-*   `src/app/domain`: Pydantic модели и стейт агентов.
-*   `src/app/services`: Бизнес-логика (LLM, Code Parsers, Git Service, Linter).
-*   `src/app/agents`: Граф LangGraph и промпты.
-*   `src/app/api`: REST API контроллеры.
+    *   Откройте [http://localhost:3000](http://localhost:3000).
+    *   В чате напишите: `Напиши тест для https://example.com`.
+    *   Наслаждайтесь магией.

@@ -11,6 +11,10 @@
 {"type":"entity","name":"Batch Architecture","entityType":"Pattern","observations":["Hybrid Graph Pattern: Main StateGraph routes based on Analyst output.","Parallel Execution: Uses `asyncio.gather` with `Semaphore(5)` for rate limiting.","Scalability: Handles 5-10 concurrent test generations."]}
 {"type":"entity","name":"Frontend Architecture","entityType":"Architecture","observations":["Three-Pane Dashboard Layout (Sidebar, Editor, Terminal).","State Management: Zustand stores logs, code, and UI state.","Editor: Monaco Editor with custom 'cloud-ru-dark' theme matching brand colors."]}
 {"type":"entity","name":"Current Limitations","entityType":"Status","observations":["No persistent database (In-Memory state only).","No User Authentication (Single-user MVP).","GitLab Integration is mocked (UI only).","Unit Test coverage is partial."]}
+{"type":"entity","name":"Agentic Workflow","entityType":"Process","observations":["Orchestrates Analyst, Coder, and Reviewer agents","Implemented in src/app/agents/graph.py","Uses self-correction loop"]}
+{"type":"entity","name":"CodeValidator","entityType":"Component","observations":["Located in src/app/services/tools/linter.py","Enforces AST validity","Bans 'os', 'subprocess' in generated code","Enforces Allure decorators"]}
+{"type":"entity","name":"White-Box Analysis","entityType":"Feature","observations":["Parses source code (ZIP/Git)","Uses AST for Python/Java and Regex for JS","Located in src/app/services/code_analysis"]}
+{"type":"entity","name":"TestExecutorService","entityType":"Service","observations":["Runs generated tests in isolated Docker containers","Handles Allure report generation","Located in src/app/services/executor.py"]}
 {"type":"relation","from":"TestOps Evolution Forge","to":"Backend","relationType":"contains"}
 {"type":"relation","from":"TestOps Evolution Forge","to":"Frontend","relationType":"contains"}
 {"type":"relation","from":"Backend","to":"Analyst Agent","relationType":"orchestrates"}
@@ -23,3 +27,7 @@
 {"type":"relation","from":"Backend","to":"Batch Architecture","relationType":"implements"}
 {"type":"relation","from":"Frontend","to":"SSE Protocol","relationType":"consumes"}
 {"type":"relation","from":"TestOps Evolution Forge","to":"Current Limitations","relationType":"has"}
+{"type":"relation","from":"TestOps Evolution Forge","to":"Agentic Workflow","relationType":"implements"}
+{"type":"relation","from":"Agentic Workflow","to":"CodeValidator","relationType":"uses_as_quality_gate"}
+{"type":"relation","from":"Agentic Workflow","to":"White-Box Analysis","relationType":"consumes_context_from"}
+{"type":"relation","from":"TestOps Evolution Forge","to":"TestExecutorService","relationType":"executes_tests_via"}

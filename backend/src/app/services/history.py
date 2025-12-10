@@ -18,13 +18,14 @@ class HistoryService:
         await self.db.refresh(run)
         return run
 
-    async def update_run(self, run_id: int, code: str = None, status: str = None, test_type: str = None):
+    async def update_run(self, run_id: int, code: str = None, status: str = None, test_type: str = None, test_plan: str = None):
         result = await self.db.execute(select(TestRun).where(TestRun.id == run_id))
         run = result.scalars().first()
         if run:
             if code: run.generated_code = code
             if status: run.status = status
             if test_type: run.test_type = test_type
+            if test_plan: run.test_plan = test_plan
             await self.db.commit()
             await self.db.refresh(run)
         return run

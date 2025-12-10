@@ -11,6 +11,7 @@ class TestRun(Base):
     test_type = Column(String, nullable=True)
     status = Column(String, default="PENDING")
     generated_code = Column(Text, nullable=True)
+    test_plan = Column(Text, nullable=True)
     
     execution_status = Column(String, nullable=True)
     report_url = Column(String, nullable=True)

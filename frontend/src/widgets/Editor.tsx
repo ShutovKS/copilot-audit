@@ -1,16 +1,17 @@
 import Editor from '@monaco-editor/react';
 import { useAppStore } from '../entities/store';
-import { Copy, Check, Loader2, Play, GitMerge, FileText, Code2, ExternalLink, X } from 'lucide-react';
+import { Copy, Check, Loader2, Play, GitMerge, FileText, Code2, ExternalLink, X, Wrench } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { api, exportToGitLab } from '../shared/api/client';
 
 export const CodeEditor = () => {
-  const { code: storeCode, testPlan, editorSettings, addLog, status } = useAppStore();
+  const { code: storeCode, testPlan, editorSettings, addLog, status, currentRunId, addMessage, setStatus } = useAppStore();
   const [displayCode, setDisplayCode] = useState('');
   const [activeFile, setActiveFile] = useState<'code' | 'plan' | 'report'>('code');
   const [copied, setCopied] = useState(false);
   
   const [isRunning, setIsRunning] = useState(false);
+  const [lastErrorLogs, setLastErrorLogs] = useState<string | null>(null);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -59,31 +60,31 @@ export const CodeEditor = () => {
   const handleRunTest = async () => {
       if (!storeCode || isRunning) return;
       
+      if (!currentRunId) {
+          addLog("Error: No active test run selected. Generate a test first.");
+          return;
+      }
+      
       setIsRunning(true);
       setActiveFile('code');
+      setLastErrorLogs(null);
       addLog("System: Initializing execution environment...");
       
       try {
-          const histRes = await api.get('/history');
-          const latestRun = histRes.data[0];
-          
-          if (!latestRun) throw new Error("No active test run");
-          
-          addLog("System: Running pytest with allure...");
-          const res = await api.post(`/execution/${latestRun.id}/run`);
+          addLog(`System: Running pytest for Run ID ${currentRunId}...`);
+          const res = await api.post(`/execution/${currentRunId}/run`);
           
           if (res.data.success) {
               addLog("System: Execution Successful!");
           } else {
               addLog("System: Execution Failed. Check logs.");
+              if (res.data.logs) setLastErrorLogs(res.data.logs);
           }
           
           const logs = res.data.logs;
-          if (logs) {
-               const lines = logs.split('\n');
-               lines.forEach((line: string) => {
-                   if (line.trim()) addLog(`Pytest: ${line}`);
-               });
+          if (logs && logs.trim()) {
+               addLog(`Pytest Execution Log:\
+${logs}`);
           }
           
           if (res.data.report_url) {
@@ -100,6 +101,88 @@ export const CodeEditor = () => {
       }
   };
 
+  const handleAutoFix = async () => {
+      if (!lastErrorLogs || !currentRunId) return;
+      
+      addMessage({
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: "Тесты упали. Почини код.",
+          timestamp: Date.now()
+      });
+
+      setStatus('processing');
+      const fixPayload = `[AUTO-FIX] \
+Failed Logs:\
+${lastErrorLogs}`;
+      
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+      
+      try {
+          const response = await fetch(`${API_URL}/chat/message`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Session-ID': useAppStore.getState().sessionId
+            },
+            body: JSON.stringify({ 
+                message: fixPayload,
+                model_name: useAppStore.getState().selectedModel,
+                run_id: currentRunId
+            })
+        });
+        
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
+        if (reader) {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                // Properly handle chunk buffering
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\
+\
+');
+                
+                // Keep the last incomplete chunk in the buffer
+                buffer = lines.pop() || '';
+                
+                for (const line of lines) {
+                     if (line.startsWith('data: ')) {
+                         try {
+                             const data = JSON.parse(line.replace('data: ', ''));
+                             if (data.type === 'log') addLog(data.content);
+                             if (data.type === 'code') useAppStore.getState().setCode(data.content);
+                             if (data.type === 'finish') {
+                                 setStatus('success');
+                                 setLastErrorLogs(null);
+                                 addMessage({
+                                     id: crypto.randomUUID(),
+                                     role: 'assistant',
+                                     content: 'Я исправил код на основе логов ошибки. Попробуйте запустить снова.',
+                                     timestamp: Date.now()
+                                 });
+                             }
+                             if (data.type === 'error') {
+                                 addLog(`System Error: ${data.content}`);
+                                 setStatus('error');
+                             }
+                         } catch(e) {
+                             console.error("Parse error", e, line);
+                         }
+                     }
+                }
+            }
+        }
+      } catch (e) {
+          addLog(`Error fixing: ${e}`);
+          setStatus('error');
+      }
+  };
+
   const handleExport = async () => {
       if (!projectId || !token) return;
       setIsExporting(true);
@@ -113,7 +196,7 @@ export const CodeEditor = () => {
       }
   };
 
-  const isActionEnabled = status === 'success' && storeCode && !storeCode.startsWith('# Generated');
+  const isActionEnabled = (status === 'success' || currentRunId != null) && storeCode && !storeCode.startsWith('# Generated');
 
   return (
     <div className="bg-[#1f2126] rounded-2xl h-full flex flex-col overflow-hidden shadow-2xl border border-white/5 relative">
@@ -183,7 +266,7 @@ export const CodeEditor = () => {
             {activeFile === 'report' && reportUrl ? (
                 <iframe src={reportUrl} className="w-full h-full bg-white" title="Allure Report" />
             ) : (
-                <div className="flex-1 bg-[#1f2126]">
+                <div className="flex-1 bg-[#1f2126] relative">
                     <Editor
                         height="100%"
                         defaultLanguage={activeFile === 'code' ? 'python' : 'markdown'}
@@ -210,6 +293,18 @@ export const CodeEditor = () => {
                             monaco.editor.setTheme('cloud-rounded'); 
                         }}
                     />
+                    
+                    {/* Auto-Fix Overlay */}
+                    {lastErrorLogs && activeFile === 'code' && (
+                        <div className="absolute bottom-6 right-6 z-10 animate-in slide-in-from-bottom-4">
+                            <button 
+                                onClick={handleAutoFix}
+                                className="flex items-center gap-2 px-4 py-3 bg-error hover:bg-red-600 text-white rounded-xl shadow-lg font-bold transition-all hover:scale-105"
+                            >
+                                <Wrench size={18} /> Auto-Fix with AI
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

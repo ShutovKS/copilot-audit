@@ -1,15 +1,10 @@
-import { Box, TerminalSquare, Loader2, Zap, ShieldAlert, Smartphone, Wand2, Paperclip, GitBranch, X, Check, Lock } from 'lucide-react';
+import { Send, TerminalSquare, Loader2, Zap, ShieldAlert, Smartphone, Wand2, Paperclip, GitBranch, X, Check, Lock, Bot, User } from 'lucide-react';
 import { useAppStore } from '../entities/store';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { analyzeSourceCode, analyzeGitRepo } from '../shared/api/client';
 
-const PRESETS = {
-    UI: `Напиши UI тест на Python (Playwright) для калькулятора Cloud.ru (https://cloud.ru/calculator). \nСценарий:\n1. Открыть страницу.\n2. Добавить сервис 'Виртуальная машина'.\n3. Изменить количество CPU на 4.\n4. Проверить, что цена изменилась.`,
-    API: `Сгенерируй API тест для методов GET /v1/instances и POST /v1/instances.\nИспользуй базовый URL: https://compute.api.cloud.ru\nПроверь, что в ответе приходит список машин и статус код 200.\nДобавь негативный тест на 401 (без токена).`
-};
-
 export const Sidebar = () => {
-  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status, selectedModel, sessionId, showToast } = useAppStore();
+  const { input, setInput, setCode, setTestPlan, setStatus, addLog, clearLogs, status, selectedModel, sessionId, showToast, setCurrentRunId, currentRunId, messages, addMessage } = useAppStore();
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showGitInput, setShowGitInput] = useState(false);
@@ -19,50 +14,96 @@ export const Sidebar = () => {
   const [isPrivateRepo, setIsPrivateRepo] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom of chat
+  useEffect(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
   
-  const handleGenerate = async () => {
+  const handleSendMessage = async () => {
     if (!input.trim()) return;
     
+    const userMsg = input;
+    setInput(''); // Clear input immediately
+    
+    // Add User Message
+    addMessage({
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: userMsg,
+        timestamp: Date.now()
+    });
+
     setStatus('processing');
-    clearLogs();
-    setCode('# Generating...');
-    setTestPlan('');
-    addLog(`System: Connecting to Agent Stream using ${selectedModel}...`);
+    // Only clear logs if starting a NEW run
+    if (!currentRunId) clearLogs();
+    
+    addLog(`System: Sending message to Chat Agent...`);
 
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     try {
-        const response = await fetch(`${API_URL}/generate`, {
+        const response = await fetch(`${API_URL}/chat/message`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
                 'X-Session-ID': sessionId
             },
             body: JSON.stringify({ 
-                user_request: input,
-                model_name: selectedModel
+                message: userMsg,
+                model_name: selectedModel,
+                run_id: currentRunId // Pass current Run ID to maintain context
             })
         });
         if (!response.ok) throw new Error("API Error");
+        
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
+        let buffer = '';
+
         if (reader) {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n\n');
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n\n');
+                buffer = lines.pop() || '';
+
                 for (const line of lines) {
                      if (line.startsWith('data: ')) {
                          try {
                              const data = JSON.parse(line.replace('data: ', ''));
-                             if (data.type === 'log') addLog(data.content);
+                             
+                             if (data.type === 'meta') {
+                                 if (data.run_id) setCurrentRunId(data.run_id);
+                             }
+                             if (data.type === 'log') {
+                                 addLog(data.content);
+                             }
                              if (data.type === 'code') setCode(data.content);
                              if (data.type === 'plan') setTestPlan(data.content);
                              if (data.type === 'status' && data.content === 'COMPLETED') setStatus('success');
-                             if (data.type === 'finish') setStatus('success');
+                             if (data.type === 'finish') {
+                                 setStatus('success');
+                                 showToast("Code Updated Successfully!", 'success');
+                                 // Add AI Response Message
+                                 addMessage({
+                                     id: crypto.randomUUID(),
+                                     role: 'assistant',
+                                     content: 'Готово! Я обновил код и план тестирования.',
+                                     timestamp: Date.now()
+                                 });
+                             }
                              if (data.type === 'error') {
                                  setStatus('error');
                                  addLog(`Error: ${data.content}`);
+                                 addMessage({
+                                     id: crypto.randomUUID(),
+                                     role: 'assistant',
+                                     content: `Ошибка: ${data.content}`,
+                                     timestamp: Date.now()
+                                 });
                              }
                          } catch(e) {}
                      }
@@ -75,6 +116,7 @@ export const Sidebar = () => {
     }
   };
 
+  // ... (Helpers remain same)
   const handleEnhance = async () => {
       if (!input.trim()) return;
       setIsEnhancing(true);
@@ -125,199 +167,157 @@ export const Sidebar = () => {
 
   const appendContext = (summary: string, count: number, source: string) => {
       if (count === 0) {
-          showToast(
-              "⚠️ No API endpoints found!\n\nSupported Frameworks:\n• Python: FastAPI\n• Java: Spring Boot\n• Node.js: NestJS, Express\n\nCheck if your code uses standard decorators.", 
-              'error'
-          );
-          
-          const contextHeader = `\n\n[ANALYSIS RESULT (${source})]:\n❌ No supported API endpoints found.\nSupported: FastAPI, Spring, NestJS, Express.\n`;
+          const contextHeader = `\n\n[ANALYSIS RESULT (${source})]:\n❌ No supported API endpoints found.\n`;
           setInput(prev => prev + contextHeader);
-          addLog(`System: Analyzed ${source} but found 0 endpoints.`);
       } else {
           const contextHeader = `\n\n[SOURCE CODE CONTEXT (${source}) - ${count} ENDPOINTS]:\n`;
           setInput(prev => prev + contextHeader + summary);
-          addLog(`System: Successfully analyzed ${source}. Found ${count} endpoints.`);
       }
   };
 
-  const addFeature = (text: string) => {
-      setInput(input + (input ? '\n' : '') + text);
-  };
-
   const isProcessing = status === 'processing';
-  const isDisabled = isProcessing || !input.trim();
+  // Check if we are waiting for initial response or streaming
+  const isStreaming = isProcessing && messages[messages.length - 1]?.role !== 'assistant';
 
   return (
     <div className="bg-[#1f2126] rounded-2xl h-full flex flex-col overflow-hidden shadow-2xl border border-white/5">
-       <div className="p-6 pb-2">
-          <div className="flex items-center gap-3 mb-1">
-             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[#1f2126]">
-                 <span className="font-bold text-sm">1</span>
-             </div>
-             <h2 className="text-lg font-medium text-white">Конфигурация</h2>
+       {/* Header ... Same */}
+       <div className="p-4 border-b border-white/5 flex items-center justify-between bg-[#18191d]">
+          <div className="flex items-center gap-2">
+             <Bot size={18} className="text-primary" />
+             <h2 className="text-sm font-bold text-white">AI Assistant</h2>
           </div>
-          <p className="text-xs text-muted pl-11">Настройте параметры генерации</p>
+          <button onClick={() => { clearLogs(); setCurrentRunId(null); useAppStore.getState().clearMessages(); }} className="text-[10px] text-muted hover:text-white px-2 py-1 rounded hover:bg-white/5 transition-colors">
+              New Chat
+          </button>
        </div>
        
-       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+       {/* Chat History */}
+       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+          {messages.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center text-muted opacity-30 gap-3">
+                  <Bot size={48} />
+                  <p className="text-xs text-center max-w-[200px]">
+                      Готов к работе. Опишите задачу или загрузите код.
+                  </p>
+              </div>
+          )}
           
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-                <label className="text-xs font-medium text-muted">Требования / Swagger</label>
-                
-                {/* Added 'relative' here to anchor the absolute popover */}
-                <div className="flex items-center gap-2 relative">
-                    {showGitInput ? (
-                        <div className="flex flex-col gap-2 p-3 bg-[#18191d] rounded-xl border border-white/10 animate-in slide-in-from-right-2 duration-200 z-50 absolute right-0 top-0 shadow-2xl w-72">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-[10px] font-bold text-muted uppercase">Clone Repository</span>
-                                <button onClick={() => setShowGitInput(false)} className="text-muted hover:text-white"><X size={12}/></button>
-                            </div>
-                            
-                            <div className="flex items-center gap-2">
-                                <input 
-                                    type="text" 
-                                    value={gitUrl} 
-                                    onChange={e => setGitUrl(e.target.value)} 
-                                    placeholder="https://github.com/user/repo"
-                                    className={`flex-1 bg-black/30 text-[10px] text-white p-2 rounded-lg border outline-none transition-colors 
-                                        ${gitUrl && !isValidGitUrl ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-primary'}
-                                    `}
-                                    autoFocus
-                                />
-                                <button 
-                                    onClick={() => setIsPrivateRepo(!isPrivateRepo)}
-                                    className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${isPrivateRepo ? 'text-primary bg-primary/10' : 'text-muted'}`}
-                                    title="Private Repository?"
-                                >
-                                    <Lock size={12} />
-                                </button>
-                            </div>
-                            
-                            {isPrivateRepo && (
-                                <input 
-                                    type="password" 
-                                    value={gitToken} 
-                                    onChange={e => setGitToken(e.target.value)} 
-                                    placeholder="Personal Access Token (PAT)"
-                                    className="w-full bg-black/30 text-[10px] text-white p-2 rounded-lg border border-white/10 focus:border-primary outline-none animate-in fade-in slide-in-from-top-1"
-                                />
-                            )}
-
-                            <button 
-                                onClick={handleGitAnalysis} 
-                                disabled={isUploading || !isValidGitUrl}
-                                className={`w-full py-2.5 mt-2 bg-[#00b67a] text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-900/20
-                                    ${(isUploading || !isValidGitUrl) ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-[#00a36d] hover:scale-[1.02] active:scale-[0.98]'}
-                                `}
-                            >
-                                {isUploading ? <Loader2 size={14} className="animate-spin"/> : <GitBranch size={14}/>} 
-                                Analyze Repository
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            <button 
-                                onClick={() => setShowGitInput(true)}
-                                disabled={isUploading || isProcessing}
-                                className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-white disabled:opacity-50 transition-colors"
-                                title="Clone Git Repo"
-                            >
-                                <GitBranch size={10} /> Git
-                            </button>
-                            <div className="h-3 w-px bg-white/10 mx-1" />
-                            <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={isUploading || isProcessing}
-                                className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-white disabled:opacity-50 transition-colors"
-                                title="Upload ZIP"
-                            >
-                                <Paperclip size={10} /> {isUploading ? '...' : 'ZIP'}
-                            </button>
-                        </>
-                    )}
-                    
-                    <input type="file" ref={fileInputRef} className="hidden" accept=".zip" onChange={handleFileUpload} />
-                    
-                    <div className="h-3 w-px bg-white/10 mx-1" />
-
-                    <button 
-                        onClick={handleEnhance} 
-                        disabled={isEnhancing || !input.trim()} 
-                        className="flex items-center gap-1 text-[10px] text-secondary hover:text-white disabled:opacity-50 transition-colors"
-                    >
-                        {isEnhancing ? <Loader2 size={10} className="animate-spin" /> : <Wand2 size={10} />}
-                        AI Enhance
-                    </button>
-                </div>
-            </div>
-            <div className="bg-[#18191d] rounded-xl p-1 border border-white/5 focus-within:border-primary/50 transition-colors">
-                <textarea 
-                    className="w-full h-48 bg-transparent border-none text-sm text-white p-3 focus:ring-0 resize-none placeholder:text-zinc-600"
-                    placeholder="Введите требования или загрузите код..."
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    disabled={isProcessing}
-                    maxLength={10000}
-                />
-            </div>
-            
-            <div className="flex flex-wrap gap-2 pt-2">
-                <button onClick={() => addFeature('Добавь негативные сценарии.')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-[10px] text-zinc-300 transition-colors border border-white/5">
-                    <ShieldAlert size={10} className="text-error" /> Негативные тесты
-                </button>
-                <button onClick={() => addFeature('Проверь мобильную версию (viewport).')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-[10px] text-zinc-300 transition-colors border border-white/5">
-                    <Smartphone size={10} className="text-blue-400" /> Мобайл
-                </button>
-                <button onClick={() => addFeature('Используй Page Object Model.')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-[10px] text-zinc-300 transition-colors border border-white/5">
-                    <Box size={10} className="text-yellow-400" /> POM Pattern
-                </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-             <label className="text-xs font-medium text-muted">Быстрые сценарии</label>
-             <div className="flex gap-2">
-                 <button 
-                    onClick={() => setInput(PRESETS.UI)}
-                    disabled={isProcessing}
-                    className="flex-1 px-3 py-2 bg-[#2b2d33] hover:bg-[#363840] rounded-lg text-[10px] text-white flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
-                 >
-                     <Zap size={12} className="text-yellow-500" /> UI Калькулятор
-                 </button>
-                 <button 
-                    onClick={() => setInput(PRESETS.API)}
-                    disabled={isProcessing}
-                    className="flex-1 px-3 py-2 bg-[#2b2d33] hover:bg-[#363840] rounded-lg text-[10px] text-white flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
-                 >
-                     <Box size={12} className="text-blue-500" /> API Compute
-                 </button>
-             </div>
-          </div>
+          {messages.map((msg) => (
+              <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
+                      {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+                  </div>
+                  <div className={`rounded-2xl p-3 text-xs leading-relaxed max-w-[85%] whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#2b2d33] text-white rounded-tr-sm' : 'bg-[#18191d] text-zinc-300 rounded-tl-sm border border-white/5'}`}>
+                      {msg.content}
+                  </div>
+              </div>
+          ))}
+          {isStreaming && (
+              <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                      <Loader2 size={14} className="animate-spin" />
+                  </div>
+                  <div className="bg-[#18191d] rounded-2xl rounded-tl-sm p-3 border border-white/5 flex items-center gap-2">
+                      <span className="text-xs text-muted">Working on it... check logs &rarr;</span>
+                  </div>
+              </div>
+          )}
+          <div ref={messagesEndRef} />
        </div>
 
-       <div className="p-6 pt-0">
-          <button 
-            onClick={handleGenerate}
-            disabled={isDisabled}
-            className={`w-full h-12 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2
-                ${isDisabled 
-                    ? 'bg-[#2b2d33] text-zinc-500 cursor-not-allowed border border-white/5' 
-                    : 'bg-[#00b67a] hover:bg-[#00a36d] text-white hover:shadow-[0_0_20px_rgba(0,182,122,0.4)] hover:scale-[1.02] active:scale-[0.98]'}
-            `}
-          >
-            {isProcessing ? (
-                <>
-                    <Loader2 size={18} className="animate-spin" />
-                    <span>Генерация...</span>
-                </>
-            ) : (
-                <>
-                    <TerminalSquare size={18} />
-                    <span>Создать тест</span>
-                </>
-            )}
-          </button>
+       {/* Input Area ... Same */}
+       <div className="p-4 pt-2 bg-[#1f2126] border-t border-white/5 space-y-3">
+          {/* Toolbar ... Same */}
+          <div className="flex items-center gap-2">
+                <button 
+                    onClick={() => setShowGitInput(!showGitInput)}
+                    disabled={isProcessing}
+                    className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition-colors"
+                    title="Git Repo"
+                >
+                    <GitBranch size={14} />
+                </button>
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isProcessing}
+                    className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition-colors"
+                    title="Upload ZIP"
+                >
+                    <Paperclip size={14} />
+                </button>
+                <input type="file" ref={fileInputRef} className="hidden" accept=".zip" onChange={handleFileUpload} />
+                
+                <button 
+                    onClick={handleEnhance} 
+                    disabled={isEnhancing || !input.trim()}
+                    className="p-1.5 rounded-lg hover:bg-white/5 text-secondary hover:text-white transition-colors ml-auto"
+                    title="AI Enhance"
+                >
+                    <Wand2 size={14} className={isEnhancing ? "animate-spin" : ""} />
+                </button>
+          </div>
+
+          {/* Git Input Popover ... Same */}
+          {showGitInput && (
+             <div className="bg-[#18191d] p-3 rounded-xl border border-white/10 flex flex-col gap-2 animate-in slide-in-from-bottom-2">
+                 <input 
+                    type="text" 
+                    value={gitUrl} 
+                    onChange={e => setGitUrl(e.target.value)} 
+                    placeholder="https://github.com/user/repo"
+                    className="w-full bg-black/30 text-[10px] text-white p-2 rounded-lg border border-white/10 outline-none"
+                 />
+                 <div className="flex gap-2">
+                     <button 
+                        onClick={() => setIsPrivateRepo(!isPrivateRepo)}
+                        className={`flex-1 p-1.5 rounded-lg text-[10px] border ${isPrivateRepo ? 'bg-primary/10 border-primary/50 text-primary' : 'border-white/10 text-muted'}`}
+                     >
+                         {isPrivateRepo ? 'Private (Token Required)' : 'Public Repo'}
+                     </button>
+                     <button 
+                        onClick={handleGitAnalysis}
+                        className="flex-1 bg-primary hover:bg-primaryHover text-white text-[10px] font-bold rounded-lg"
+                     >
+                        Analyze
+                     </button>
+                 </div>
+                 {isPrivateRepo && (
+                     <input 
+                        type="password" 
+                        value={gitToken} 
+                        onChange={e => setGitToken(e.target.value)} 
+                        placeholder="Git Token"
+                        className="w-full bg-black/30 text-[10px] text-white p-2 rounded-lg border border-white/10 outline-none"
+                     />
+                 )}
+             </div>
+          )}
+
+          {/* Message Input ... Same */}
+          <div className="relative">
+              <textarea 
+                  className="w-full bg-[#18191d] border border-white/5 rounded-xl p-3 pr-10 text-sm text-white focus:border-primary/50 focus:ring-0 resize-none placeholder:text-zinc-600 custom-scrollbar outline-none transition-all"
+                  placeholder="Отправьте сообщение..."
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage();
+                      }
+                  }}
+                  rows={3}
+                  disabled={isProcessing}
+              />
+              <button 
+                  onClick={handleSendMessage}
+                  disabled={!input.trim() || isProcessing}
+                  className="absolute right-2 bottom-2 p-2 bg-primary hover:bg-primaryHover text-white rounded-lg disabled:opacity-50 disabled:bg-zinc-700 transition-all"
+              >
+                  {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+          </div>
        </div>
     </div>
   );

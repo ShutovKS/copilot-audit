@@ -15,6 +15,7 @@ class TestRunSchema(BaseModel):
     test_type: str | None
     status: str
     generated_code: str | None
+    test_plan: str | None
     created_at: datetime
 
     class Config:

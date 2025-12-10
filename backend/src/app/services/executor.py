@@ -16,8 +16,9 @@ class TestExecutorService:
         
         try:
             self.docker_client = docker.from_env()
+            logger.info("🐳 Docker client connected.")
         except Exception as e:
-            logger.error(f"CRITICAL: Docker Daemon unavailable. Error: {e}")
+            logger.error(f"❌ CRITICAL: Docker Daemon unavailable. Error: {e}")
             self.docker_client = None
 
     def cleanup_all(self):
@@ -61,6 +62,7 @@ class TestExecutorService:
                 return False
 
     async def execute_test(self, run_id: int, code: str) -> Tuple[bool, str, Optional[str]]:
+        logger.info(f"▶️ Executing Run ID: {run_id}...")
         if not self.docker_client:
             return False, "Docker is not running.", None
         self.cleanup_all()
@@ -93,6 +95,7 @@ filterwarnings =
     ignore::DeprecationWarning
                 """)
         except Exception as e:
+            logger.error(f"❌ IO Error preparing run files: {e}")
             return False, f"IO Error: {e}", None
 
         cmd = f"/bin/sh -c 'pytest test_{run_id}.py -v && allure generate /app/allure-results -o /app/report --clean'"
@@ -102,7 +105,7 @@ filterwarnings =
         container = None
 
         try:
-            logger.info(f"🐳 executing run {run_id}...")
+            logger.info(f"🐳 Starting container for run {run_id}...")
             
             container = self.docker_client.containers.run(
                 image="testops-runner:latest",
@@ -120,8 +123,11 @@ filterwarnings =
             
             logs = container.logs().decode("utf-8", errors="replace")
             success = (exit_code == 0)
+            
+            logger.info(f"🏁 Run {run_id} finished. Exit Code: {exit_code}. Logs length: {len(logs)} chars.")
 
         except Exception as e:
+            logger.error(f"❌ Docker Execution Error: {e}")
             return False, f"Docker Error: {e}", None
         finally:
             if container:
@@ -134,16 +140,15 @@ filterwarnings =
         if final_report_dir.exists():
             shutil.rmtree(final_report_dir, ignore_errors=True)
             
+        report_url = None
         if (run_dir_abs / "report").exists() and any((run_dir_abs / "report").iterdir()):
             try:
                 shutil.copytree(run_dir_abs / "report", final_report_dir)
                 report_url = f"/static/reports/{run_id}/index.html"
+                logger.info(f"📊 Report generated at {report_url}")
             except Exception as e:
-                logs += f"\n[WARN] Failed to publish report: {e}"
-                report_url = None
+                logger.warning(f"Failed to publish report: {e}")
         else:
-            report_url = None
-            if success:
-                logs += "\n[WARN] Allure report missing."
+            logger.warning("⚠️ Allure report missing (tests might have crashed early).")
 
         return success, logs, report_url

@@ -8,10 +8,11 @@ interface TestRun {
     status: string;
     created_at: string;
     generated_code: string | null;
+    test_plan: string | null;
 }
 
 export const HistoryList = () => {
-  const { setInput, setCode, sessionId } = useAppStore();
+  const { setInput, setCode, setTestPlan, setCurrentRunId, sessionId } = useAppStore();
   const [history, setHistory] = useState<TestRun[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +43,8 @@ export const HistoryList = () => {
   const loadRun = (run: TestRun) => {
       if (run.user_request) setInput(run.user_request);
       if (run.generated_code) setCode(run.generated_code);
+      if (run.test_plan) setTestPlan(run.test_plan);
+      setCurrentRunId(run.id);
   };
 
   return (

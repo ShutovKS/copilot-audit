@@ -3,6 +3,20 @@ import { persist } from 'zustand/middleware';
 
 export type GenerationStatus = 'idle' | 'processing' | 'success' | 'error';
 
+export interface ChatMessage {
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp: number;
+}
+
+export interface LogEntry {
+    id: string;
+    content: string;
+    timestamp: string;
+    type: 'info' | 'error' | 'success' | 'warning' | 'debug';
+}
+
 interface EditorSettings {
     fontSize: number;
     minimap: boolean;
@@ -104,6 +118,13 @@ interface AppState {
   sessionId: string;
   setSessionId: (id: string) => void;
 
+  currentRunId: number | null;
+  setCurrentRunId: (id: number | null) => void;
+
+  messages: ChatMessage[];
+  addMessage: (msg: ChatMessage) => void;
+  clearMessages: () => void;
+
   input: string;
   setInput: (val: string | ((prev: string) => string)) => void;
   
@@ -113,8 +134,8 @@ interface AppState {
   testPlan: string;
   setTestPlan: (val: string) => void;
   
-  logs: string[];
-  addLog: (log: string) => void;
+  logs: LogEntry[];
+  addLog: (content: string) => void;
   clearLogs: () => void;
   
   status: GenerationStatus;
@@ -140,6 +161,13 @@ export const useAppStore = create<AppState>()(
       sessionId: crypto.randomUUID(),
       setSessionId: (sessionId) => set({ sessionId }),
 
+      currentRunId: null,
+      setCurrentRunId: (currentRunId) => set({ currentRunId }),
+
+      messages: [],
+      addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
+      clearMessages: () => set({ messages: [] }),
+
       input: '',
       setInput: (val) => set((state) => ({
           input: typeof val === 'function' ? val(state.input) : val
@@ -152,7 +180,28 @@ export const useAppStore = create<AppState>()(
       setTestPlan: (testPlan) => set({ testPlan }),
       
       logs: [],
-      addLog: (log) => set((state) => ({ logs: [...state.logs, log] })),
+      addLog: (content) => {
+          let type: LogEntry['type'] = 'info';
+          if (content.includes('Error') || content.includes('Failed')) type = 'error';
+          else if (content.includes('Success') || content.includes('Valid')) type = 'success';
+          else if (content.includes('Analyst') || content.includes('Coder')) type = 'debug';
+
+          // Duplicate to Console
+          const prefix = `[Forge]`;
+          if (type === 'error') console.error(prefix, content);
+          else if (type === 'success') console.info(prefix, content);
+          else if (type === 'debug') console.debug(prefix, content);
+          else console.log(prefix, content);
+          
+          const newLog: LogEntry = {
+              id: crypto.randomUUID(),
+              content,
+              timestamp: new Date().toLocaleTimeString(),
+              type
+          };
+
+          set((state) => ({ logs: [...state.logs, newLog] }));
+      },
       clearLogs: () => set({ logs: [], testPlan: '' }),
       
       status: 'idle',
@@ -182,17 +231,11 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({ 
           editorSettings: state.editorSettings, 
           selectedModel: state.selectedModel,
-          sessionId: state.sessionId 
+          sessionId: state.sessionId,
+          messages: state.messages 
       }),
       onRehydrateStorage: () => (state) => {
-          // 1. Session ID Init
-          if (state && !state.sessionId) {
-              state.setSessionId(crypto.randomUUID());
-          }
-          // 2. Model Validation
-          if (state && !AVAILABLE_MODELS.some(m => m.id === state.selectedModel)) {
-              state.setSelectedModel(DEFAULT_MODEL);
-          }
+          if (state && !state.sessionId) state.setSessionId(crypto.randomUUID());
       }
     }
   )

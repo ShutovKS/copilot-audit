@@ -13,7 +13,7 @@ from sqlalchemy import text
 from src.app.core.config import get_settings
 from src.app.core.database import AsyncSessionLocal
 from src.app.core.bootstrap import bootstrap_application, shutdown_application
-from src.app.api.endpoints import generation, history, execution, analysis
+from src.app.api.endpoints import generation, history, execution, analysis, chat
 from src.app.api.endpoints.export import gitlab
 from src.app.services.executor import TestExecutorService
 from src.app.services.llm_factory import CloudRuLLMService
@@ -57,6 +57,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='execution_logs') THEN 
                         ALTER TABLE test_runs ADD COLUMN execution_logs TEXT; 
                     END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='test_plan') THEN 
+                        ALTER TABLE test_runs ADD COLUMN test_plan TEXT; 
+                    END IF;
                 END $$;
             """))
             await session.commit()
@@ -77,7 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title="TestOps Evolution Forge API",
-    version="1.2.0",
+    version="1.4.0",
     default_response_class=ORJSONResponse,
     lifespan=lifespan,
 )
@@ -95,6 +98,7 @@ static_path.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 app.include_router(generation.router, prefix="/api/v1", tags=["Generation"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(history.router, prefix="/api/v1/history", tags=["History"])
 app.include_router(execution.router, prefix="/api/v1/execution", tags=["Execution"])
 app.include_router(gitlab.router, prefix="/api/v1/export", tags=["Export"])
@@ -103,12 +107,21 @@ app.include_router(analysis.router, prefix="/api/v1", tags=["Code Analysis"])
 
 @app.get("/api/v1/health", tags=["System"])
 async def health_check() -> dict:
-    status = {"service": "testops-forge", "version": "1.2.0"}
+    status = {"service": "testops-forge", "version": "1.4.0"}
+    
+    # Check DB
     try:
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
             status["database"] = "connected"
     except Exception as e:
-        status["database"] = str(e)
+        status["database"] = f"error: {str(e)}"
+        
+    # Check LLM
+    try:
+        llm_service = CloudRuLLMService()
+        status['llm'] = "ready"
+    except Exception as e:
+        status['llm'] = f"error: {str(e)}"
         
     return status

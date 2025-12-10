@@ -1,4 +1,4 @@
-import { Terminal as TerminalIcon, CheckCircle2, AlertCircle, Loader2, Activity, BrainCircuit, Code2, ShieldCheck, Sparkles, Zap, ChevronDown, ChevronRight, Settings } from 'lucide-react';
+import { Terminal as TerminalIcon, CheckCircle2, AlertCircle, Loader2, Activity, BrainCircuit, Code2, ShieldCheck, Sparkles, Zap, ChevronDown, ChevronRight, Settings, Wrench } from 'lucide-react';
 import { useAppStore } from '../entities/store';
 import { useEffect, useRef, useState } from 'react';
 
@@ -8,28 +8,29 @@ const STEPS = [
     { id: 'reviewer', label: 'Проверка', icon: ShieldCheck },
 ];
 
-const LogItem = ({ log, timestamp }: { log: string, timestamp: string }) => {
+const LogItem = ({ content, timestamp, type }: { content: string, timestamp: string, type: string }) => {
     const [expanded, setExpanded] = useState(false);
-    const isLong = log.length > 60 || log.includes('\n');
+    const isLong = content.length > 80 || content.includes('\n');
     
+    const colorClass = 
+        type === 'error' ? 'text-red-400' : 
+        type === 'success' ? 'text-emerald-400' : 
+        content.includes('System') ? 'text-blue-400' :
+        content.includes('Analyst') ? 'text-purple-400' :
+        content.includes('Coder') ? 'text-yellow-400' :
+        content.includes('Debugger') ? 'text-orange-400' :
+        'text-zinc-300';
+
     return (
         <div className="flex gap-3 text-[11px] leading-relaxed animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <span className="text-zinc-600 shrink-0 select-none font-medium w-12 text-right">
+            <span className="text-zinc-600 shrink-0 select-none font-medium w-16 text-right font-mono opacity-70">
                 {timestamp}
             </span>
             <div className="flex-1 min-w-0">
                 <div 
-                    className={`break-words whitespace-pre-wrap ${ 
-                        log.includes('Error') ? 'text-red-400' : 
-                        log.includes('Success') ? 'text-emerald-400' : 
-                        log.includes('System') ? 'text-blue-400' :
-                        log.includes('Analyst') ? 'text-purple-400' :
-                        log.includes('Coder') ? 'text-yellow-400' :
-                        log.includes('Reviewer') ? 'text-cyan-400' :
-                        'text-zinc-300'
-                    } ${!expanded && isLong ? 'line-clamp-2' : ''}`}
+                    className={`break-words whitespace-pre-wrap ${colorClass} ${!expanded && isLong ? 'line-clamp-2' : ''}`}
                 >
-                    {log}
+                    {content}
                 </div>
                 {isLong && (
                     <button 
@@ -61,15 +62,22 @@ export const Terminal = ({ onOpenSettings }: TerminalProps) => {
       if (status === 'success') return STEPS.length; 
       if (status === 'error') return -1;
       
-      const lastLog = logs[logs.length - 1] || '';
+      // Find last relevant log to determine step
+      const lastLog = logs.length > 0 ? logs[logs.length - 1].content : '';
+      
       if (lastLog.includes('Reviewer')) return 2;
-      if (lastLog.includes('Coder')) return 1;
+      if (lastLog.includes('Coder') || lastLog.includes('Debugger')) return 1;
       if (lastLog.includes('Analyst')) return 0;
+      
+      // Default if logs are empty but status is processing
+      if (status === 'processing') return 0;
+      
       return 0;
   };
 
   const activeStepIndex = getCurrentStepIndex();
   const isIdle = status === 'idle';
+  const isFixing = logs.some(l => l.content.includes('Debugger') || l.content.includes('Auto-Fix'));
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -78,7 +86,7 @@ export const Terminal = ({ onOpenSettings }: TerminalProps) => {
                 <div className="flex items-center gap-2">
                     <Activity size={16} className={status === 'processing' ? 'text-[#00b67a] animate-pulse' : 'text-muted'} />
                     <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                        {status === 'processing' ? 'Workflow Active' : status === 'success' ? 'Task Completed' : status === 'error' ? 'Task Failed' : 'Ready'}
+                        {status === 'processing' ? (isFixing ? 'Auto-Fixing...' : 'Workflow Active') : status === 'success' ? 'Task Completed' : status === 'error' ? 'Task Failed' : 'Ready'}
                     </h3>
                 </div>
                 <div className="flex items-center gap-2">
@@ -126,7 +134,10 @@ export const Terminal = ({ onOpenSettings }: TerminalProps) => {
                                       isPast ? 'bg-[#2b2d33] border-[#2b2d33] text-white shadow-md' : 
                                       'bg-[#18191d] border-white/5 text-muted'}
                                 `}>
-                                    {isError ? <AlertCircle size={18} /> : isPast ? <CheckCircle2 size={18} strokeWidth={3} className="text-[#00b67a]" /> : <step.icon size={18} />}
+                                    {isFixing && step.id === 'coder' && isActive ? <Wrench size={18} className="animate-pulse"/> : 
+                                     isError ? <AlertCircle size={18} /> : 
+                                     isPast ? <CheckCircle2 size={18} strokeWidth={3} className="text-[#00b67a]" /> : 
+                                     <step.icon size={18} />}
                                 </div>
 
                                 <div className={`absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center transition-all duration-300`}>
@@ -163,8 +174,8 @@ export const Terminal = ({ onOpenSettings }: TerminalProps) => {
                         <div className="text-xs font-medium">Жду событий...</div>
                     </div>
                 )}
-                {logs.map((log, i) => (
-                    <LogItem key={i} log={log} timestamp={new Date().toLocaleTimeString().split(' ')[0]} />
+                {logs.map((log) => (
+                    <LogItem key={log.id} content={log.content} timestamp={log.timestamp} type={log.type} />
                 ))}
                 <div ref={bottomRef} />
              </div>
