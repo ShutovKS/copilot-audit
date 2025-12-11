@@ -1,6 +1,9 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from src.app.services.tools.linter import CodeValidator
+
 
 @pytest.fixture
 def valid_code():
@@ -40,7 +43,7 @@ def test_validate_syntax_error(syntax_error_code: str) -> None:
     assert "AST Syntax Error" in message
 
 def test_validate_allure_missing(code_without_allure: str) -> None:
-    """Test that code without Allure decorators fails validation."""    
+    """Test that code without Allure decorators fails validation."""
     is_valid, message, fixed = CodeValidator.validate(code_without_allure)
 
     assert is_valid is False
@@ -50,21 +53,21 @@ def test_validate_allure_missing(code_without_allure: str) -> None:
 @patch("src.app.services.tools.linter.subprocess.run")
 def test_validate_ruff_error(mock_run: MagicMock, valid_code: str) -> None:
     """Test that linter errors are caught."""
-    
+
     mock_fix = MagicMock()
     mock_fix.returncode = 0
-    
+
     mock_format = MagicMock()
     mock_format.returncode = 0
-    
+
     mock_check_fail = MagicMock()
     mock_check_fail.returncode = 1
     mock_check_fail.stdout = "Ruff error found"
-    
+
     mock_run.side_effect = [mock_fix, mock_format, mock_check_fail]
-    
+
     is_valid, message, fixed = CodeValidator.validate(valid_code)
-    
+
     assert is_valid is False
     assert "Linter Error" in message
     assert "Ruff error found" in message
@@ -72,32 +75,32 @@ def test_validate_ruff_error(mock_run: MagicMock, valid_code: str) -> None:
 @patch("src.app.services.tools.linter.subprocess.run")
 def test_validate_pytest_collection_error(mock_run: MagicMock, valid_code: str) -> None:
     """Test that pytest collection errors are caught."""
-    
+
     mock_success = MagicMock()
     mock_success.returncode = 0
-    
+
     mock_pytest_fail = MagicMock()
     mock_pytest_fail.returncode = 1
     mock_pytest_fail.stdout = "Pytest collection failed"
     mock_pytest_fail.stderr = "Import error"
-    
+
     mock_run.side_effect = [mock_success, mock_success, mock_success, mock_pytest_fail]
-    
+
     is_valid, message, fixed = CodeValidator.validate(valid_code)
-    
+
     assert is_valid is False
     assert "Pytest Collection Error" in message
 
 @patch("src.app.services.tools.linter.subprocess.run")
 def test_validate_success(mock_run: MagicMock, valid_code: str) -> None:
     """Test successful validation."""
- 
+
     mock_success = MagicMock()
     mock_success.returncode = 0
-    
+
     mock_run.side_effect = [mock_success, mock_success, mock_success, mock_success]
-    
+
     is_valid, message, fixed = CodeValidator.validate(valid_code)
-    
+
     assert is_valid is True
     assert "Code is valid" in message
