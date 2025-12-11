@@ -2,6 +2,7 @@ import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
 
 export type GenerationStatus = 'idle' | 'processing' | 'success' | 'error';
+export type EditorFile = 'code' | 'plan' | 'report';
 
 export interface ChatMessage {
 	id: string;
@@ -163,6 +164,14 @@ interface AppState {
 	isDebugReportOpen: boolean;
 	fetchAndShowDebugReport: (runId: number) => Promise<void>;
 	hideDebugReport: () => void;
+
+	clearWorkspace: () => void;
+
+	reportUrl: string | null;
+	setReportUrl: (url: string | null) => void;
+
+	activeEditorFile: EditorFile;
+	setActiveEditorFile: (file: EditorFile) => void;
 }
 
 export interface DebugContextResponse {
@@ -203,7 +212,8 @@ export const useAppStore = create<AppState>()(
 			logs: [],
 			addLog: (content) => {
 				let type: LogEntry['type'] = 'info';
-				if (content.includes('Error') || content.includes('Failed')) type = 'error';
+				// Fix: Don't flag 'Failed' in test names (e.g. TestFailedLogin) as errors. Use strict Pytest 'FAILED' status.
+    if (content.includes('Error:') || content.includes('Execution Failed') || content.includes('FAILED')) type = 'error';
 				else if (content.includes('Success') || content.includes('Valid')) type = 'success';
 				else if (content.includes('Analyst') || content.includes('Coder')) type = 'debug';
 
@@ -245,6 +255,26 @@ export const useAppStore = create<AppState>()(
 			toast: null,
 			showToast: (message, type) => set({toast: {message, type}}),
 			hideToast: () => set({toast: null}),
+
+			clearWorkspace: () => {
+				set({
+					messages: [],
+					logs: [],
+					code: '# Generated tests will appear here...',
+					testPlan: '',
+					status: 'idle',
+					error: null,
+					currentRunId: null,
+					reportUrl: null,
+					activeEditorFile: 'code',
+				});
+			},
+
+			reportUrl: null,
+			setReportUrl: (url) => set({reportUrl: url}),
+
+			activeEditorFile: 'code',
+			setActiveEditorFile: (file) => set({activeEditorFile: file}),
 
 			// Centralized SSE Logic
 			sendMessage: async (message: string) => {

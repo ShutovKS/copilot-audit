@@ -10,3 +10,4 @@ __pycache__
 all_sources.md
 .vscode/
 .idea/
+backend/static/

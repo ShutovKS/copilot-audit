@@ -66,6 +66,9 @@ async def chat_event_generator(request_body: ChatMessageRequest, session_id: str
 			async for output in agent_graph.astream(input_state, config=config):
 				for _node_name, state_update in output.items():
 
+					if not state_update:
+						continue
+
 					# Handle Logs
 					if "logs" in state_update:
 						for log_msg in state_update["logs"]:

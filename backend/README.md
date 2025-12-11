@@ -4,33 +4,36 @@ Backend-сервис, реализующий логику мульти-аген�
 
 ## Возможности API
 
-*   **SSE Streaming**: `/api/v1/generate` отдает логи и код в реальном времени.
-*   **Code Analysis**: 
-    *   `/api/v1/analyze-source` (ZIP Upload)
-    *   `/api/v1/analyze-git` (Git Clone)
-    *   Поддержка: Python (FastAPI), Java (Spring), Node.js (NestJS, Express).
-*   **RBAC**: Все запросы требуют заголовок `X-Session-ID`.
+* **SSE Streaming**: `/api/v1/generate` отдает логи и код в реальном времени.
+* **Code Analysis**:
+  * `/api/v1/analyze-source` (ZIP Upload)
+  * `/api/v1/analyze-git` (Git Clone)
+  * Поддержка: Python (FastAPI), Java (Spring), Node.js (NestJS, Express).
+* **RBAC**: Все запросы требуют заголовок `X-Session-ID`.
 
 ## Структура проекта
 
-*   `src/app/agents/` — Логика агентов (Analyst, Coder, Reviewer).
-*   `src/app/services/code_analysis/` — Парсеры исходного кода (AST/Regex).
-*   `src/app/services/tools/` — Инструменты валидации (Strict Allure Linter).
-*   `src/app/api/` — FastAPI эндпоинты.
+* `src/app/agents/` — Логика агентов (Analyst, Coder, Reviewer).
+* `src/app/services/code_analysis/` — Парсеры исходного кода (AST/Regex).
+* `src/app/services/tools/` — Инструменты валидации (Strict Allure Linter).
+* `src/app/api/` — FastAPI эндпоинты.
 
 ## Локальная разработка
 
 1. **Установка зависимостей (Poetry):**
+
    ```bash
    poetry install
    ```
 
 2. **Запуск сервера:**
+
    ```bash
    poetry run uvicorn src.app.main:app --reload
    ```
 
 3. **Запуск тестов:**
+
    ```bash
    poetry run pytest
    ```

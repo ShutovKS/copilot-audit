@@ -1,5 +1,6 @@
 import ast
 import asyncio
+import json
 import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -15,45 +16,66 @@ SEMAPHORE = asyncio.Semaphore(5)
 
 
 async def process_single_scenario(scenario: str, index: int) -> str:
-	"""
-	Runs the full generation loop (Code -> Validate -> Fix) for a single scenario.
-	Includes Post-Processing to avoid Class Name Collisions.
-	"""
-	async with SEMAPHORE:
-		messages = [
-			SystemMessage(content=CODER_SYSTEM_PROMPT),
-			HumanMessage(content=f"Generate a Pytest test for this scenario:\n{scenario}")
-		]
+    """
+    Runs the full generation loop (Code -> Validate -> Fix) for a single scenario.
+    Includes Post-Processing to avoid Class Name Collisions.
+    """
+    async with SEMAPHORE:
+        messages = [
+            SystemMessage(content=CODER_SYSTEM_PROMPT),
+            HumanMessage(content=f"Generate a Pytest test for this scenario:\n{scenario}")
+        ]
 
-		try:
-			response = await llm.ainvoke(messages)
-			code = str(response.content).replace("```python", "").replace("```", "").strip()
+        try:
+            # Reverted to simple invoke without response_format
+            response = await llm.ainvoke(messages)
+            raw_content = str(response.content)
 
-			# Validation Loop
-			for _attempt in range(3):
-				is_valid, error_msg, fixed_code = CodeValidator.validate(code)
+            # Improved code extraction from markdown blocks
+            code_match = re.search(r"```python\s*([\s\S]*?)```", raw_content)
+            if code_match:
+                code = code_match.group(1).strip()
+            else:
+                # Fallback: assume the whole content is code and let the validator handle it
+                code = raw_content.strip()
 
-				if fixed_code:
-					code = fixed_code
+            # Validation Loop
+            for _attempt in range(3):
+                is_valid, error_msg, fixed_code = CodeValidator.validate(code)
 
-				if is_valid:
-					return _isolate_namespaces(code, index)
+                if fixed_code:
+                    code = fixed_code
 
-				fix_prompt = FIXER_SYSTEM_PROMPT.format(
-					error_log=error_msg,
-					code=code
-				)
-				response = await llm.ainvoke([
-					SystemMessage(content=CODER_SYSTEM_PROMPT),
-					HumanMessage(content=fix_prompt)
-				])
-				code = str(response.content).replace("```python", "").replace("```", "").strip()
+                if is_valid:
+                    return _isolate_namespaces(code, index)
 
-			final_code = _isolate_namespaces(code, index)
-			return f"# FAILED TO VALIDATE AFTER 3 ATTEMPTS\n# ERROR: {error_msg}\n{final_code}"
+                # If validation fails, ask the model to fix it
+                fix_prompt = FIXER_SYSTEM_PROMPT.format(
+                    error_log=error_msg,
+                    code=code
+                )
 
-		except Exception as e:
-			return f"# GENERATION ERROR: {str(e)}"
+                fix_messages = [
+                    SystemMessage(content=CODER_SYSTEM_PROMPT),
+                    HumanMessage(content=fix_prompt)
+                ]
+
+                # Also reverted here
+                response = await llm.ainvoke(fix_messages)
+                raw_content = str(response.content)
+
+                # Use same extraction logic for the fix
+                code_match = re.search(r"```python\s*([\s\S]*?)```", raw_content)
+                if code_match:
+                    code = code_match.group(1).strip()
+                else:
+                    code = raw_content.strip()
+
+            final_code = _isolate_namespaces(code, index)
+            return f"# FAILED TO VALIDATE AFTER 3 ATTEMPTS\n# ERROR: {error_msg}\n{final_code}"
+
+        except Exception as e:
+            return f"# GENERATION ERROR: {str(e)}"
 
 
 def _isolate_namespaces(code: str, index: int) -> str:

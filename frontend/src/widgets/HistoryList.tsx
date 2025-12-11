@@ -1,5 +1,5 @@
 import {useEffect, useState, useCallback} from 'react';
-import {History, CheckCircle2, AlertCircle, Loader2, BugPlay} from 'lucide-react';
+import {History, CheckCircle2, AlertCircle, Loader2, BugPlay, PlusSquare} from 'lucide-react';
 import {useAppStore, type ChatMessage} from '../entities/store';
 
 interface TestRun {
@@ -28,7 +28,7 @@ export const HistoryList = () => {
 		setTestPlan,
 		setCurrentRunId,
 		setMessages,
-		clearLogs,
+		clearWorkspace,
 		sessionId,
 		showToast,
 		fetchAndShowDebugReport
@@ -79,7 +79,7 @@ export const HistoryList = () => {
 				const data: TestRunDetails = await res.json();
 
 				// Reset state
-				clearLogs();
+				clearWorkspace();
 
 				// Set new state
 				setInput('');
@@ -106,6 +106,12 @@ export const HistoryList = () => {
 		}
 	};
 
+	const handleNewChat = () => {
+		clearWorkspace();
+		setInput('');
+		showToast('New session started', 'info');
+	}
+
 	const handleDebugClick = (e: React.MouseEvent, runId: number) => {
 		e.stopPropagation();
 		fetchAndShowDebugReport(runId);
@@ -118,9 +124,14 @@ export const HistoryList = () => {
 					<History size={16} className="text-muted"/>
 					<h3 className="text-sm font-medium text-white">История</h3>
 				</div>
-				<button onClick={fetchHistory} className="text-[10px] text-primary hover:underline" disabled={loading}>
-					{loading ? 'Обновление...' : 'Обновить'}
-				</button>
+				<div className="flex items-center gap-4">
+					<button onClick={handleNewChat} className="text-primary hover:text-white" title="New Chat">
+						<PlusSquare size={16} />
+					</button>
+					<button onClick={fetchHistory} className="text-[10px] text-primary hover:underline" disabled={loading}>
+						{loading ? 'Обновление...' : 'Обновить'}
+					</button>
+				</div>
 			</div>
 
 			<div className="flex-1 overflow-y-auto p-2 space-y-2">

@@ -5,14 +5,15 @@ import {useState, useEffect, useRef} from 'react';
 import {api, exportToGitLab} from '../shared/api/client';
 
 export const CodeEditor = () => {
-	const {code: storeCode, testPlan, editorSettings, addLog, status, currentRunId, sendMessage, setCode} = useAppStore();
+	const {
+		code: storeCode, testPlan, editorSettings, addLog, status, currentRunId, sendMessage, setCode,
+		reportUrl, setReportUrl, activeEditorFile, setActiveEditorFile
+	} = useAppStore();
 	const [displayCode, setDisplayCode] = useState('');
-	const [activeFile, setActiveFile] = useState<'code' | 'plan' | 'report'>('code');
 	const [copied, setCopied] = useState(false);
 
 	const [isRunning, setIsRunning] = useState(false);
 	const [lastErrorLogs, setLastErrorLogs] = useState<string | null>(null);
-	const [reportUrl, setReportUrl] = useState<string | null>(null);
 
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
@@ -58,7 +59,7 @@ export const CodeEditor = () => {
 	}, [storeCode]);
 
 	const handleCopy = () => {
-		navigator.clipboard.writeText(activeFile === 'code' ? storeCode : testPlan);
+		navigator.clipboard.writeText(activeEditorFile === 'code' ? storeCode : testPlan);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
 	};
@@ -72,7 +73,7 @@ export const CodeEditor = () => {
 		}
 
 		setIsRunning(true);
-		setActiveFile('code');
+		setActiveEditorFile('code');
 		setLastErrorLogs(null);
 		addLog("System: Initializing execution environment...");
 
@@ -93,9 +94,10 @@ export const CodeEditor = () => {
 			}
 
 			if (res.data.report_url) {
-				const fullUrl = import.meta.env.VITE_API_URL.replace('/api/v1', '') + res.data.report_url;
+				    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const fullUrl = apiUrl.replace('/api/v1', '') + res.data.report_url;
 				setReportUrl(fullUrl);
-				setActiveFile('report');
+				setActiveEditorFile('report');
 				addLog(`System: Report generated: ${fullUrl}`);
 			}
 
@@ -141,21 +143,21 @@ export const CodeEditor = () => {
 			<div className="h-12 flex items-center px-4 justify-between border-b border-white/5 bg-[#18191d]">
 				<div className="flex gap-1 h-full pt-2">
 					<button
-						onClick={() => setActiveFile('code')}
-						className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeFile === 'code' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
+						onClick={() => setActiveEditorFile('code')}
+						className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeEditorFile === 'code' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
 					>
 						<Code2 size={14} className="text-blue-400"/> test_suite.py
 					</button>
 					<button
-						onClick={() => setActiveFile('plan')}
-						className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeFile === 'plan' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
+						onClick={() => setActiveEditorFile('plan')}
+						className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeEditorFile === 'plan' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
 					>
 						<FileText size={14} className="text-yellow-400"/> test_plan.md
 					</button>
 					{reportUrl && (
 						<button
-							onClick={() => setActiveFile('report')}
-							className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeFile === 'report' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
+							onClick={() => setActiveEditorFile('report')}
+							className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeEditorFile === 'report' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
 						>
 							<ExternalLink size={14} className="text-primary"/> Allure Report
 						</button>
@@ -201,15 +203,15 @@ export const CodeEditor = () => {
 			</div>
 
 			<div className="flex-1 flex min-h-0 relative">
-				{activeFile === 'report' && reportUrl ? (
+				{activeEditorFile === 'report' && reportUrl ? (
 					<iframe src={reportUrl} className="w-full h-full bg-white" title="Allure Report"/>
 				) : (
 					<div className="flex-1 bg-[#1f2126] relative">
 						<Editor
 							height="100%"
-							defaultLanguage={activeFile === 'code' ? 'python' : 'markdown'}
+							defaultLanguage={activeEditorFile === 'code' ? 'python' : 'markdown'}
 							theme="vs-dark"
-							value={activeFile === 'code' ? displayCode : (testPlan || '*Test plan not generated yet*')}
+							value={activeEditorFile === 'code' ? displayCode : (testPlan || '*Test plan not generated yet*')}
 							options={{
 								readOnly: true,
 								minimap: {enabled: editorSettings.minimap},
@@ -233,7 +235,7 @@ export const CodeEditor = () => {
 						/>
 
 						{/* Auto-Fix Overlay */}
-						{lastErrorLogs && activeFile === 'code' && (
+						{lastErrorLogs && activeEditorFile === 'code' && (
 							<div className="absolute bottom-6 right-6 z-10 animate-in slide-in-from-bottom-4">
 								<button
 									onClick={handleAutoFix}

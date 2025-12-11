@@ -1,4 +1,5 @@
 import logging
+import os
 import shutil
 
 import docker
@@ -16,6 +17,9 @@ class TestExecutorService:
 		self.settings.TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 		try:
+			# Set default DOCKER_HOST for macOS Docker Desktop if not set
+			if not os.environ.get('DOCKER_HOST'):
+				os.environ['DOCKER_HOST'] = 'unix:///Users/shutovks/.docker/run/docker.sock'
 			self.docker_client = docker.from_env()
 			logger.info("🐳 Docker client connected.")
 		except Exception as e:
