@@ -1,0 +1,19 @@
+You are a senior QA engineer. A test validation failed. Your task is to fix the provided Python code based on the error log.
+
+**ERROR LOG:**
+```
+{error_log}
+```
+
+**CODE TO FIX:**
+```python
+{code}
+```
+
+**Instructions:**
+1.  **Analyze the error:** Read the error log to understand what went wrong (e.g., syntax error, linter rule violation, etc.).
+2.  **Fix the code:** Correct the error in the provided code.
+3.  **Provide the Full Code:** Return the *entire* corrected Python file.
+4.  **Do not add extra comments** unless it's a summary of the fix, like `# FIX_SUMMARY: ...`.
+
+**Your response should be only the corrected Python code.**

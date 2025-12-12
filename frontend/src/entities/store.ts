@@ -1,7 +1,7 @@
 import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
 
-export type GenerationStatus = 'idle' | 'processing' | 'success' | 'error' | 'waiting_for_input';
+export type GenerationStatus = 'idle' | 'processing' | 'success' | 'error' | 'waiting_for_input' | 'waiting_for_approval';
 export type EditorFile = 'code' | 'plan' | 'report';
 
 export interface ChatMessage {
@@ -158,6 +158,7 @@ interface AppState {
 
 	// New action for handling SSE
 	sendMessage: (message: string) => Promise<void>;
+	approvePlan: (params: { approved: boolean; feedback?: string }) => Promise<void>;
 
 	// State for Debug Report
 	debugContext: DebugContextResponse | null;
@@ -404,18 +405,19 @@ export const useAppStore = create<AppState>()(
 												console.log('[SSE] Handling "plan" event.');
 												setTestPlan(data.content);
 											}
-											if (data.type === 'status' && data.content === 'COMPLETED') {
-												console.log('[SSE] Handling "status: COMPLETED" event. Setting status to success.');
-												setStatus('success');
-											}
-											if (data.type === 'status' && data.content === 'waiting_for_input') {
-												console.log('[SSE] Handling "status: waiting_for_input" event.');
-												setStatus('waiting_for_input');
+											if (data.type === 'status') {
+												const raw = String(data.content || '');
+												const normalized = raw.toUpperCase();
+												console.log('[SSE] Handling "status" event:', raw);
+												if (normalized === 'COMPLETED') setStatus('success');
+												else if (normalized === 'FAILED') setStatus('error');
+												else if (normalized === 'WAITING_FOR_INPUT') setStatus('waiting_for_input');
+												else if (normalized === 'WAITING_FOR_APPROVAL') setStatus('waiting_for_approval');
 											}
 											if (data.type === 'finish') {
 												console.log('[SSE] Handling "finish" event.');
 												const finalStatus = get().status;
-												if (finalStatus !== 'waiting_for_input') {
+												if (finalStatus !== 'waiting_for_input' && finalStatus !== 'waiting_for_approval') {
 													setStatus('success');
 													showToast("Code Updated Successfully!", 'success');
 													addMessage({
@@ -425,7 +427,7 @@ export const useAppStore = create<AppState>()(
 														timestamp: Date.now()
 													});
 												} else {
-													setStatus('idle');
+													// Keep the waiting status so the UI can request input/approval.
 												}
 											}
 											if (data.type === 'error') {
@@ -463,6 +465,126 @@ export const useAppStore = create<AppState>()(
 							timestamp: Date.now()
 						});
 					}
+				}
+			},
+
+			approvePlan: async ({ approved, feedback }: { approved: boolean; feedback?: string }) => {
+				const {
+					currentRunId,
+					sessionId,
+					setStatus,
+					addLog,
+					addMessage,
+					setCode,
+					setTestPlan,
+					showToast,
+				} = get();
+
+				if (!currentRunId) {
+					showToast('Нет активного run_id для аппрува', 'error');
+					return;
+				}
+
+				if (!approved) {
+					try {
+						setStatus('processing');
+						addLog('System: Rejecting test plan...');
+						const API_URL = '/api/v1';
+						const res = await fetch(`${API_URL}/chat/approve`, {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								'X-Session-ID': sessionId,
+							},
+							body: JSON.stringify({ run_id: currentRunId, approved: false, feedback: feedback || null }),
+						});
+						if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
+						showToast('План отклонён', 'info');
+						setStatus('idle');
+						addMessage({
+							id: crypto.randomUUID(),
+							role: 'assistant',
+							content: 'План отклонён. Можете скорректировать запрос и отправить заново.',
+							timestamp: Date.now(),
+						});
+					} catch (e: unknown) {
+						setStatus('error');
+						addLog(`Error: ${(e as Error).message}`);
+					}
+					return;
+				}
+
+				// Approve: resume SSE
+				setStatus('processing');
+				addLog('System: Approving test plan and resuming workflow...');
+				setCode('# Waiting for code generation after approval...');
+
+				const API_URL = '/api/v1';
+				try {
+					const response = await fetch(`${API_URL}/chat/approve`, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-Session-ID': sessionId,
+						},
+						body: JSON.stringify({ run_id: currentRunId, approved: true, feedback: feedback || null }),
+					});
+					if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+
+					const reader = response.body?.getReader();
+					const decoder = new TextDecoder();
+					let buffer = '';
+
+					if (reader) {
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+							buffer += decoder.decode(value, { stream: true });
+							const lines = buffer.split('\n\n');
+							buffer = lines.pop() || '';
+
+							for (const line of lines) {
+								if (!line.startsWith('data: ')) continue;
+								const rawData = line.replace('data: ', '');
+								if (!rawData.trim()) continue;
+
+								try {
+									const data = JSON.parse(rawData);
+									if (data.type === 'log') addLog(data.content);
+									if (data.type === 'message') {
+										addMessage({
+											id: crypto.randomUUID(),
+											role: 'assistant',
+											content: data.content,
+											timestamp: Date.now(),
+										});
+									}
+									if (data.type === 'code') setCode(data.content);
+									if (data.type === 'plan') setTestPlan(data.content);
+									if (data.type === 'status') {
+										const raw = String(data.content || '');
+										const normalized = raw.toUpperCase();
+										if (normalized === 'COMPLETED') setStatus('success');
+										else if (normalized === 'FAILED') setStatus('error');
+										else if (normalized === 'WAITING_FOR_INPUT') setStatus('waiting_for_input');
+										else if (normalized === 'WAITING_FOR_APPROVAL') setStatus('waiting_for_approval');
+									}
+									if (data.type === 'finish') {
+										const finalStatus = get().status;
+										if (finalStatus !== 'waiting_for_input' && finalStatus !== 'waiting_for_approval') {
+											setStatus('success');
+											showToast('Код сгенерирован после аппрува', 'success');
+										}
+									}
+								} catch (e) {
+									console.error('[SSE] Failed to parse approval JSON:', line, e);
+								}
+							}
+						}
+					}
+				} catch (e: unknown) {
+					setStatus('error');
+					addLog(`Error: ${(e as Error).message}`);
 				}
 			},
 

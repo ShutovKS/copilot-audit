@@ -21,3 +21,6 @@ build/
 .logs/
 /tmp/
 /cache/
+
+# Игнорируй прочие скрипты
+gluing-project-contents.sh

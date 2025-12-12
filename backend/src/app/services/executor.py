@@ -175,6 +175,70 @@ class TestExecutorService:
 		
 		return await loop.run_in_executor(None, self._execute_test_sync, run_id, code, redis_client)
 
+	async def validate_code_in_isolation(self, code: str) -> tuple[bool, str]:
+		logger.info("🕵️  Executing validation in isolation...")
+		if not self.docker_client:
+			return False, "Docker is not running."
+
+		loop = asyncio.get_running_loop()
+		return await loop.run_in_executor(None, self._validate_code_sync, code)
+
+	def _validate_code_sync(self, code: str) -> tuple[bool, str]:
+		"""Synchronous implementation of isolated code validation."""
+		if not self._ensure_runner_image():
+			return False, "Failed to prepare Test Runner environment."
+
+		temp_dir = (self.settings.TEMP_DIR / f"validation-{time.time_ns()}").resolve()
+		temp_dir.mkdir(parents=True, exist_ok=True)
+		logs = ""
+		container = None
+
+		try:
+			test_file = temp_dir / "test_to_validate.py"
+			with open(test_file, "w", encoding="utf-8") as f:
+				f.write(code)
+
+			cmd = f"pytest --collect-only -q test_to_validate.py"
+
+			container = self.docker_client.containers.run(
+				image="testops-runner:latest",
+				command=cmd,
+				volumes={str(temp_dir): {'bind': '/app', 'mode': 'ro'}}, # Read-only is safer
+				working_dir="/app",
+				shm_size="1g",
+				detach=True,
+				labels={"created_by": "testops-forge", "role": "validator"},
+				log_config={'type': 'json-file'},
+				mem_limit="512m",
+				cpu_quota=50000,
+			)
+
+			# Wait for container to finish and grab logs
+			result = container.wait(timeout=60)
+			exit_code = result.get('StatusCode', 1)
+			
+			logs = container.logs().decode("utf-8", errors="replace").strip()
+			logger.info(f"[Validation] {logs}")
+			
+			success = (exit_code == 0)
+			if not success:
+				return False, f"Pytest Collection Error:\n{logs}"
+			
+			return True, "Pytest collection successful."
+
+		except Exception as e:
+			logger.error(f"❌ Docker Validation Error: {e}")
+			return False, f"Docker Execution Error during validation: {e}"
+		finally:
+			if container:
+				try:
+					container.remove(force=True)
+				except Exception:
+					pass
+			if temp_dir.exists():
+				shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 	def _execute_test_sync(self, run_id: int, code: str, redis_client=None) -> tuple[bool, str, str | None]:
 		"""Synchronous implementation of test execution"""
 		# Helper to publish logs safely from sync code

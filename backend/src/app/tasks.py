@@ -1,5 +1,6 @@
 import asyncio
 import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -11,17 +12,26 @@ from src.app.domain.models import TestRun
 from src.app.domain.enums import ExecutionStatus
 from src.app.services.executor import TestExecutorService
 
+
 logger = logging.getLogger(__name__)
 
 async def _run_task_logic(run_id: int, code: str):
     """
     Fully isolated async logic that manages its own resources.
     """
-    settings = get_settings()
+
     
-    # 1. Create LOCAL resources (bound to the current asyncio.run loop)
+    # Database operations
+    # The engine and SessionLocal will be initialized globally once per worker process.
+    settings = get_settings()
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
-    AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    AsyncSessionLocal = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
     redis_client = redis.from_url(settings.CELERY_BROKER_URL, encoding="utf-8", decode_responses=True)
     
     log_channel = f"run:{run_id}:logs"
@@ -83,6 +93,7 @@ async def _run_task_logic(run_id: int, code: str):
         await redis_client.publish(log_channel, "---EOF---")
         await redis_client.aclose()
         await engine.dispose()
+
 
 @celery_app.task(bind=True)
 def run_test_task(self, run_id: int, code: str):

@@ -20,6 +20,7 @@ class ProcessingStatus(StrEnum):
 	GENERATING = auto()
 	VALIDATING = auto()
 	FIXING = auto()
+	WAITING_FOR_APPROVAL = auto()
 	WAITING_FOR_INPUT = auto()
 	COMPLETED = auto()
 	FAILED = auto()

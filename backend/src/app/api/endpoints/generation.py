@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from collections.abc import AsyncGenerator
+import inspect
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -20,6 +21,22 @@ from src.app.services.llm_factory import CloudRuLLMService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _maybe_await(value):
+	if inspect.isawaitable(value):
+		return await value
+	return value
+
+
+def _state_next_contains(state_obj, node_name: str) -> bool:
+	next_val = getattr(state_obj, "next", None)
+	if not next_val:
+		return False
+	try:
+		return node_name in list(next_val)
+	except Exception:
+		return False
 
 
 async def event_generator(request_body: TestGenerationRequest, session_id: str, app_state) -> AsyncGenerator[str, None]:
@@ -54,33 +71,47 @@ async def event_generator(request_body: TestGenerationRequest, session_id: str, 
 		final_type = None
 
 		try:
-			async for output in agent_graph.astream(initial_state, config=config):
-				for _node_name, state_update in output.items():
-					if "logs" in state_update:
-						for log_msg in state_update["logs"]:
-							data = json.dumps({"type": "log", "content": log_msg})
+			async def _stream_once(input_payload):
+				nonlocal final_code, final_plan_str, final_status, final_type
+				async for output in agent_graph.astream(input_payload, config=config):
+					for _node_name, state_update in output.items():
+						if "logs" in state_update:
+							for log_msg in state_update["logs"]:
+								data = json.dumps({"type": "log", "content": log_msg})
+								yield f"data: {data}\n\n"
+
+						if "test_plan" in state_update and state_update["test_plan"]:
+							plan_str = "\n".join(state_update["test_plan"])
+							final_plan_str = plan_str
+							data = json.dumps({"type": "plan", "content": plan_str})
 							yield f"data: {data}\n\n"
 
-					if "test_plan" in state_update and state_update["test_plan"]:
-						plan_str = "\n".join(state_update["test_plan"])
-						final_plan_str = plan_str
-						data = json.dumps({"type": "plan", "content": plan_str})
-						yield f"data: {data}\n\n"
+						if "generated_code" in state_update and state_update["generated_code"]:
+							final_code = state_update["generated_code"]
+							data = json.dumps({"type": "code", "content": final_code})
+							yield f"data: {data}\n\n"
 
-					if "generated_code" in state_update and state_update["generated_code"]:
-						final_code = state_update["generated_code"]
-						data = json.dumps({"type": "code", "content": final_code})
-						yield f"data: {data}\n\n"
+						if "status" in state_update:
+							final_status = state_update["status"]
+							data = json.dumps({"type": "status", "content": final_status})
+							yield f"data: {data}\n\n"
 
-					if "status" in state_update:
-						final_status = state_update["status"]
-						data = json.dumps({"type": "status", "content": final_status})
-						yield f"data: {data}\n\n"
+						if "test_type" in state_update and state_update["test_type"]:
+							final_type = state_update["test_type"]
 
-					if "test_type" in state_update and state_update["test_type"]:
-						final_type = state_update["test_type"]
+						await asyncio.sleep(0.1)
 
-					await asyncio.sleep(0.1)
+			# First pass: will stop after Analyst due to HITL interrupt.
+			async for evt in _stream_once(initial_state):
+				yield evt
+
+			# If interrupted for approval, auto-resume in this non-interactive endpoint.
+			state_snapshot = await _maybe_await(
+				agent_graph.aget_state(config) if hasattr(agent_graph, "aget_state") else agent_graph.get_state(config)
+			)
+			if _state_next_contains(state_snapshot, "human_approval"):
+				async for evt in _stream_once({}):
+					yield evt
 
 			if final_status == ProcessingStatus.COMPLETED:
 				yield f"data: {json.dumps({'type': 'finish', 'content': 'done'})}\n\n"

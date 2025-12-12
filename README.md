@@ -134,7 +134,7 @@ graph TD
     Эта команда соберёт и запустит все сервисы, включая `backend`, `frontend`, `worker`, `redis` и базы данных.
 
     ```bash
-    docker-compose up --build -d
+    docker-compose up --build -d --force-recreate
     ```
 
 3. **Использование**

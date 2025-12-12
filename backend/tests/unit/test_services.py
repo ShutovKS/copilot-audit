@@ -36,8 +36,9 @@ def test_deduplication_find_similar(mock_chroma: MagicMock) -> None:
 
     # Mock Query Result
     mock_collection.query.return_value = {
-        "documents": [["def cached_test(): pass"]],
-        "distances": [[0.1]]
+        "ids": [["id1"]],
+        "distances": [[0.1]],
+        "metadatas": [[{"code": "def cached_test(): pass"}]],
     }
 
     service = DeduplicationService()
@@ -53,8 +54,9 @@ def test_deduplication_no_match(mock_chroma: MagicMock) -> None:
 
     # Mock High Distance (poor match)
     mock_collection.query.return_value = {
-        "documents": [["irrelevant code"]],
-        "distances": [[0.9]]
+        "ids": [["id1"]],
+        "distances": [[0.9]],
+        "metadatas": [[{"code": "irrelevant code"}]],
     }
 
     service = DeduplicationService()

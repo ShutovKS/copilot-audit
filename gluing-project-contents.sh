@@ -26,10 +26,10 @@ EXCLUDE_PATTERNS=(
   ".husky/.*"
   ".idea/.*"
   "docs/.*"
-   "backend/.*"
-   "frontend/.*"
-  #  "presentation/.*"
-   "^[^.\/][^/]*$|^\.[^/]*$" # Корневые файлы и скрытые файлы
+  #  "backend/.*"
+  #  "frontend/.*"
+   "presentation/.*"
+  #  "^[^.\/][^/]*$|^\.[^/]*$" # Корневые файлы и скрытые файлы
 
   "package-lock\.json"
   "yarn\.lock"

@@ -62,6 +62,7 @@ services:
     volumes:
       - testops_temp:/app/temp_execution
       - testops_reports:/app/static/reports
+      - chroma_model_cache:/root/.cache/chroma
     depends_on:
       db:
         condition: service_healthy
@@ -100,6 +101,7 @@ services:
     volumes:
       - testops_temp:/app/temp_execution
       - testops_reports:/app/static/reports
+      - chroma_model_cache:/root/.cache/chroma
     depends_on:
       db:
         condition: service_healthy
@@ -159,3 +161,4 @@ volumes:
   testops_temp:
   testops_reports:
   testops_dind_data:
+  chroma_model_cache:

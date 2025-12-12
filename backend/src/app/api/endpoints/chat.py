@@ -1,141 +1,105 @@
-import asyncio
-import json
 import logging
 import shutil
 from collections.abc import AsyncGenerator
-from pathlib import Path
 
-from fastapi import APIRouter, Header, Request
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, HumanMessage
-from pydantic import BaseModel
-
+from fastapi import APIRouter, Header, Request, HTTPException
+from fastapi.responses import StreamingResponse, JSONResponse
+from src.app.api.models import ChatMessageRequest, ApprovalRequest
 from src.app.core.config import get_settings
 from src.app.core.database import AsyncSessionLocal
 from src.app.domain.enums import ProcessingStatus
 from src.app.services.history import HistoryService
+from src.app.services.streaming_service import StreamingService, _state_next_contains, _maybe_await
+
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-class ChatMessageRequest(BaseModel):
-	message: str
-	model_name: str | None = None
-	run_id: int | None = None  # If None, creates new run
-
-
-async def chat_event_generator(request_body: ChatMessageRequest, session_id: str, app_state) -> AsyncGenerator[
-	str, None]:
-	agent_graph = app_state.agent_graph
-
+async def chat_event_generator(
+	request_body: ChatMessageRequest, session_id: str, app_state: any
+) -> AsyncGenerator[str, None]:
+	"""
+	Main entry point for starting or continuing a chat.
+	Delegates all streaming and business logic to StreamingService.
+	"""
 	async with AsyncSessionLocal() as db:
 		history_service = HistoryService(db)
-
-		# 1. Initialize or Load Run
-		if request_body.run_id:
-			run = await history_service.get_by_id(request_body.run_id, session_id)
-			if not run:
-				yield f"data: {json.dumps({'type': 'error', 'content': 'Chat session not found'})}\n\n"
-				return
-			run_id = run.id
-			logger.info(f"Continuing chat run {run_id}")
-		else:
-			run = await history_service.create_run(request_body.message, session_id)
-			run_id = run.id
-			logger.info(f"Created new chat run {run_id}")
-			# Send the new Run ID to frontend immediately
-			yield f"data: {json.dumps({'type': 'meta', 'run_id': run_id})}\n\n"
-
-		# 2. Prepare LangGraph Config (Persistence)
-		config = {"configurable": {"thread_id": str(run_id)}}
-
-		# 3. Update State with User Message
-		# Prepare the input, starting with the new message
-		input_data = {"messages": [HumanMessage(content=request_body.message)]}
-
-		# If this is a new run, initialize the full state
-		if not request_body.run_id:
-			input_data.update({
-				"user_request": request_body.message,
-				"model_name": request_body.model_name or "Qwen/Qwen2.5-Coder-32B-Instruct",
-				"status": ProcessingStatus.ANALYZING,
-				"attempts": 0,
-				"validation_error": None
-			})
-
-		final_code = ""
-		sent_messages = set()
-
-		try:
-			# 4. Stream Graph Execution
-			async for output in agent_graph.astream(input_data, config=config):
-				for _node_name, state_update in output.items():
-					if not state_update:
-						continue
-
-					# Handle Logs
-					if "logs" in state_update:
-						for log_msg in state_update["logs"]:
-							data = json.dumps({"type": "log", "content": log_msg})
-							yield f"data: {data}\n\n"
-
-					# Handle Clarification Messages
-					if "messages" in state_update:
-						last_message = state_update["messages"][-1]
-						if isinstance(last_message, AIMessage) and not last_message.tool_calls and last_message.id not in sent_messages:
-							data = json.dumps({"type": "message", "content": last_message.content})
-							yield f"data: {data}\n\n"
-							sent_messages.add(last_message.id)
-
-					# Handle Plan Updates
-					if "test_plan" in state_update and state_update["test_plan"]:
-						plan_str = "\n".join(state_update["test_plan"])
-						data = json.dumps({"type": "plan", "content": plan_str})
-						yield f"data: {data}\n\n"
-
-					# Handle Code Updates
-					if "generated_code" in state_update and state_update["generated_code"]:
-						final_code = state_update["generated_code"]
-						data = json.dumps({"type": "code", "content": final_code})
-						yield f"data: {data}\n\n"
-
-					# Handle Status
-					if "status" in state_update:
-						data = json.dumps({"type": "status", "content": state_update["status"]})
-						yield f"data: {data}\n\n"
-
-					await asyncio.sleep(0.05)
-
-			# 5. Finish
-			yield f"data: {json.dumps({'type': 'finish', 'content': 'done'})}\n\n"
-
-			# 6. Save Snapshot (Code only for now, full history is in LangGraph checkpoint)
-			if final_code:
-				await history_service.update_run(run_id=run_id, code=final_code, status=ProcessingStatus.COMPLETED)
-
-		except Exception as e:
-			logger.error(f"Chat Error: {e}", exc_info=True)
-			yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+		streaming_service = StreamingService(
+			agent_graph=app_state.agent_graph,
+			history_service=history_service,
+			app_state=app_state,
+		)
+		async for event in streaming_service.stream_graph_events(request_body, session_id):
+			yield event
 
 
 @router.post("/message")
 async def chat_message(
-		request: Request,
-		body: ChatMessageRequest,
-		x_session_id: str = Header(..., alias="X-Session-ID")
+	request: Request,
+	body: ChatMessageRequest,
+	x_session_id: str = Header(..., alias="X-Session-ID"),
 ):
+	"""Handles a new user message and streams the response."""
 	return StreamingResponse(
 		chat_event_generator(body, x_session_id, request.app.state),
-		media_type="text/event-stream"
+		media_type="text/event-stream",
 	)
 
 
-@router.post("/reset")
-async def chat_reset(
-		x_session_id: str = Header(..., alias="X-Session-ID")
+@router.post("/approve")
+async def approve_step(
+	request: Request,
+	body: ApprovalRequest,
+	x_session_id: str = Header(..., alias="X-Session-ID"),
 ):
+	"""
+	Resumes a paused LangGraph run after human approval, denial, or feedback.
+	"""
+	agent_graph = request.app.state.agent_graph
+	config = {"configurable": {"thread_id": str(body.run_id)}}
+
+	async with AsyncSessionLocal() as db:
+		history_service = HistoryService(db)
+
+		# Pre-flight checks before starting a stream
+		run = await history_service.get_by_id(body.run_id, x_session_id)
+		if not run:
+			raise HTTPException(status_code=404, detail="Run not found")
+
+		if not body.approved:
+			await history_service.update_run(run_id=body.run_id, status=ProcessingStatus.FAILED)
+			return JSONResponse(content={"status": "rejected"}, status_code=200)
+
+		state_snapshot = await _maybe_await(
+			agent_graph.aget_state(config) if hasattr(agent_graph, "aget_state") else agent_graph.get_state(config)
+		)
+		if not _state_next_contains(state_snapshot, "human_approval"):
+			raise HTTPException(status_code=400, detail="No pending approval found for this run")
+
+		# If all checks pass, create the streaming generator
+		async def resume_generator():
+			# Re-create the service inside the generator scope
+			async with AsyncSessionLocal() as db_stream:
+				history_service_stream = HistoryService(db_stream)
+				streaming_service = StreamingService(
+					agent_graph=agent_graph,
+					history_service=history_service_stream,
+					app_state=request.app.state,
+				)
+				try:
+					async for event in streaming_service.resume_stream_events(body):
+						yield event
+				except Exception as e:
+					logger.error(f"Failed to start resume stream: {e}", exc_info=True)
+					yield f"data: {{\"type\": \"error\", \"content\": \"Failed to resume process.\"}}\n\n"
+
+	return StreamingResponse(resume_generator(), media_type="text/event-stream")
+
+
+@router.post("/reset")
+async def chat_reset(x_session_id: str = Header(..., alias="X-Session-ID")):
 	"""
 	Resets the session state by deleting run artifacts.
 	"""
@@ -143,13 +107,16 @@ async def chat_reset(
 	settings = get_settings()
 
 	# Clean up directories
-	if settings.TEMP_DIR.exists():
-		shutil.rmtree(settings.TEMP_DIR)
-		logger.info(f"🧹 Removed temp dir: {settings.TEMP_DIR}")
+	temp_dir_path = settings.TEMP_DIR
+	reports_dir_path = settings.REPORTS_DIR
 
-	if settings.REPORTS_DIR.exists():
-		shutil.rmtree(settings.REPORTS_DIR)
-		logger.info(f"🧹 Removed reports dir: {settings.REPORTS_DIR}")
+	if temp_dir_path.exists() and temp_dir_path.is_dir():
+		shutil.rmtree(temp_dir_path)
+		logger.info(f"🧹 Removed temp dir: {temp_dir_path}")
+
+	if reports_dir_path.exists() and reports_dir_path.is_dir():
+		shutil.rmtree(reports_dir_path)
+		logger.info(f"🧹 Removed reports dir: {reports_dir_path}")
 
 	return {"status": "ok"}
 

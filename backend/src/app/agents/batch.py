@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.app.agents.prompts import CODER_SYSTEM_PROMPT, FIXER_SYSTEM_PROMPT
 from src.app.services.llm_factory import CloudRuLLMService
-from src.app.services.tools.linter import CodeValidator
+from src.app.services.validator import ValidationService # Import the new ValidationService
 
 llm_service = CloudRuLLMService()
 llm = llm_service.get_model()
@@ -26,6 +26,8 @@ async def process_single_scenario(scenario: str, index: int) -> str:
             HumanMessage(content=f"Generate a Pytest test for this scenario:\n{scenario}")
         ]
 
+        validation_service = ValidationService() # Initialize ValidationService here
+
         try:
             # Reverted to simple invoke without response_format
             response = await llm.ainvoke(messages)
@@ -41,7 +43,7 @@ async def process_single_scenario(scenario: str, index: int) -> str:
 
             # Validation Loop
             for _attempt in range(3):
-                is_valid, error_msg, fixed_code = CodeValidator.validate(code)
+                is_valid, error_msg, fixed_code = await validation_service.validate(code) # Use new service
 
                 if fixed_code:
                     code = fixed_code
@@ -54,6 +56,7 @@ async def process_single_scenario(scenario: str, index: int) -> str:
                     error_log=error_msg,
                     code=code
                 )
+
 
                 fix_messages = [
                     SystemMessage(content=CODER_SYSTEM_PROMPT),

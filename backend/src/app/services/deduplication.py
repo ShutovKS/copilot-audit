@@ -13,7 +13,7 @@ class DeduplicationService:
     Service for semantic deduplication using ChromaDB (Server Mode).
     """
 
-    def __init__(self):
+    def __init__(self, embedding_function=None):
         self.settings = get_settings()
 
         try:
@@ -22,7 +22,10 @@ class DeduplicationService:
                 port=self.settings.CHROMA_PORT
             )
 
-            self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+            if embedding_function:
+                self.embedding_fn = embedding_function
+            else:
+                self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
 
             self.collection = self.client.get_or_create_collection(
                 name="test_cases_v1",

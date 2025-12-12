@@ -1,5 +1,5 @@
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -17,6 +17,16 @@ class AgentState(TypedDict):
 
 	user_request: str
 	model_name: str
+
+	# Router / workflow metadata (optional at runtime)
+	task_type: NotRequired[str]
+	repo_path: NotRequired[str | None]
+	run_id: NotRequired[int | None]
+
+	# Learning memory / auto-fix bookkeeping
+	was_fixing: NotRequired[bool]
+	last_fix_old_code: NotRequired[str | None]
+	last_fix_error: NotRequired[str | None]
 
 	status: ProcessingStatus
 	test_type: TestType | None

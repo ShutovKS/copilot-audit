@@ -5,6 +5,7 @@ import {Terminal} from '../widgets/Terminal';
 import {HistoryList} from '../widgets/HistoryList';
 import {SettingsModal} from '../widgets/SettingsModal';
 import {ErrorSuggestionModal} from '../widgets/ErrorSuggestionModal';
+import {ApprovalModal} from '../widgets/ApprovalModal';
 import {Toast} from '../widgets/Toast';
 
 export const Workspace = () => {
@@ -44,6 +45,7 @@ export const Workspace = () => {
 
 			<SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)}/>
 			<ErrorSuggestionModal/>
+			<ApprovalModal/>
 			<Toast/>
 		</div>
 	);

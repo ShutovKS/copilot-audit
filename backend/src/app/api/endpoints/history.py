@@ -65,6 +65,11 @@ async def get_run(
 			messages_serializable.append({"type": msg.type, "content": msg.content})
 
 	run_data = run_details['run'].__dict__
+	# Fallback: if DB snapshot doesn't have plan/code (older chat runs), take them from LangGraph checkpoint.
+	if not run_data.get("test_plan") and run_details.get("checkpoint_test_plan"):
+		run_data["test_plan"] = run_details["checkpoint_test_plan"]
+	if not run_data.get("generated_code") and run_details.get("checkpoint_generated_code"):
+		run_data["generated_code"] = run_details["checkpoint_generated_code"]
 	run_data['messages'] = messages_serializable
 
 	return TestRunDetailsSchema(**run_data)

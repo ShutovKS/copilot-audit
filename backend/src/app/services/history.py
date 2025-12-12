@@ -70,12 +70,28 @@ class HistoryService:
 		checkpointer = AsyncPostgresSaver(self.connection_pool)
 		config = {"configurable": {"thread_id": str(run_id)}}
 
+		messages = []
+		checkpoint_plan: str | None = None
+		checkpoint_code: str | None = None
 		try:
 			checkpoint = await checkpointer.aget(config)
-			messages = checkpoint['channel_values'][
-				'messages'] if checkpoint and 'channel_values' in checkpoint and 'messages' in checkpoint[
-				'channel_values'] else []
+			channel_values = checkpoint.get("channel_values", {}) if checkpoint else {}
+			messages = channel_values.get("messages", []) or []
+			plan_val = channel_values.get("test_plan")
+			if isinstance(plan_val, list) and plan_val:
+				checkpoint_plan = "\n".join([str(x) for x in plan_val if str(x).strip()])
+			elif isinstance(plan_val, str) and plan_val.strip():
+				checkpoint_plan = plan_val
+
+			code_val = channel_values.get("generated_code")
+			if isinstance(code_val, str) and code_val.strip():
+				checkpoint_code = code_val
 		except Exception:
 			messages = []
 
-		return {"run": run, "messages": messages}
+		return {
+			"run": run,
+			"messages": messages,
+			"checkpoint_test_plan": checkpoint_plan,
+			"checkpoint_generated_code": checkpoint_code,
+		}

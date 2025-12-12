@@ -27,7 +27,7 @@ class NotificationSchema(BaseModel):
 	created_at: datetime
 
 	class Config:
-		orm_mode = True
+		from_attributes = True
 
 
 class TestGenerationResponse(BaseModel):
@@ -37,3 +37,15 @@ class TestGenerationResponse(BaseModel):
 	test_plan: list[str] = Field(default=[], description="Step-by-step test plan created by Analyst")
 	logs: list[str] = Field(default=[], description="Execution logs from all agents")
 	error: str | None = Field(None, description="Error message if generation failed")
+
+
+class ChatMessageRequest(BaseModel):
+	message: str
+	model_name: str | None = None
+	run_id: int | None = None  # If None, creates new run
+
+
+class ApprovalRequest(BaseModel):
+	run_id: int
+	approved: bool
+	feedback: str | None = None  # Optional edited test plan text
