@@ -4,7 +4,7 @@ import {useState, useRef, useEffect} from 'react';
 import {analyzeSourceCode, analyzeGitRepo} from '../shared/api/client';
 
 export const Sidebar = () => {
-	const {input, setInput, clearLogs, status, messages, setCurrentRunId, sendMessage, showToast} = useAppStore();
+	const {input, setInput, clearWorkspace, status, messages, setCurrentRunId, sendMessage, showToast} = useAppStore();
 	const [isEnhancing, setIsEnhancing] = useState(false);
 	const [showGitInput, setShowGitInput] = useState(false);
 	const [gitUrl, setGitUrl] = useState('');
@@ -26,6 +26,11 @@ export const Sidebar = () => {
 		setInput(''); // Clear input immediately
 		sendMessage(message);
 	};
+
+	const handleNewChat = async () => {
+		await clearWorkspace(true);
+		setInput('');
+	}
 
 	// ... (Helpers remain same)
 	const handleEnhance = async () => {
@@ -105,11 +110,7 @@ export const Sidebar = () => {
 					<Bot size={18} className="text-primary"/>
 					<h2 className="text-sm font-bold text-white">AI Assistant</h2>
 				</div>
-				<button onClick={() => {
-					clearLogs();
-					setCurrentRunId(null);
-					useAppStore.getState().clearMessages();
-				}} className="text-[10px] text-muted hover:text-white px-2 py-1 rounded hover:bg-white/5 transition-colors">
+				<button onClick={handleNewChat} className="text-[10px] text-muted hover:text-white px-2 py-1 rounded hover:bg-white/5 transition-colors">
 					New Chat
 				</button>
 			</div>

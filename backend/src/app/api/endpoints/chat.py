@@ -1,13 +1,16 @@
 import asyncio
 import json
 import logging
+import shutil
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
+from src.app.core.config import get_settings
 from src.app.core.database import AsyncSessionLocal
 from src.app.domain.enums import ProcessingStatus
 from src.app.services.history import HistoryService
@@ -49,23 +52,26 @@ async def chat_event_generator(request_body: ChatMessageRequest, session_id: str
 		config = {"configurable": {"thread_id": str(run_id)}}
 
 		# 3. Update State with User Message
-		# CRITICAL FIX: Reset 'attempts' and 'validation_error' to ensure fresh start for Auto-Fix
-		input_state = {
-			"messages": [HumanMessage(content=request_body.message)],
-			"user_request": request_body.message,
-			"model_name": request_body.model_name or "Qwen/Qwen2.5-Coder-32B-Instruct",
-			"status": ProcessingStatus.ANALYZING,
-			"attempts": 0,
-			"validation_error": None
-		}
+		# Prepare the input, starting with the new message
+		input_data = {"messages": [HumanMessage(content=request_body.message)]}
+
+		# If this is a new run, initialize the full state
+		if not request_body.run_id:
+			input_data.update({
+				"user_request": request_body.message,
+				"model_name": request_body.model_name or "Qwen/Qwen2.5-Coder-32B-Instruct",
+				"status": ProcessingStatus.ANALYZING,
+				"attempts": 0,
+				"validation_error": None
+			})
 
 		final_code = ""
+		sent_messages = set()
 
 		try:
 			# 4. Stream Graph Execution
-			async for output in agent_graph.astream(input_state, config=config):
+			async for output in agent_graph.astream(input_data, config=config):
 				for _node_name, state_update in output.items():
-
 					if not state_update:
 						continue
 
@@ -74,6 +80,14 @@ async def chat_event_generator(request_body: ChatMessageRequest, session_id: str
 						for log_msg in state_update["logs"]:
 							data = json.dumps({"type": "log", "content": log_msg})
 							yield f"data: {data}\n\n"
+
+					# Handle Clarification Messages
+					if "messages" in state_update:
+						last_message = state_update["messages"][-1]
+						if isinstance(last_message, AIMessage) and not last_message.tool_calls and last_message.id not in sent_messages:
+							data = json.dumps({"type": "message", "content": last_message.content})
+							yield f"data: {data}\n\n"
+							sent_messages.add(last_message.id)
 
 					# Handle Plan Updates
 					if "test_plan" in state_update and state_update["test_plan"]:
@@ -116,3 +130,26 @@ async def chat_message(
 		chat_event_generator(body, x_session_id, request.app.state),
 		media_type="text/event-stream"
 	)
+
+
+@router.post("/reset")
+async def chat_reset(
+		x_session_id: str = Header(..., alias="X-Session-ID")
+):
+	"""
+	Resets the session state by deleting run artifacts.
+	"""
+	logger.info(f"Full Reset triggered for session {x_session_id}")
+	settings = get_settings()
+
+	# Clean up directories
+	if settings.TEMP_DIR.exists():
+		shutil.rmtree(settings.TEMP_DIR)
+		logger.info(f"🧹 Removed temp dir: {settings.TEMP_DIR}")
+
+	if settings.REPORTS_DIR.exists():
+		shutil.rmtree(settings.REPORTS_DIR)
+		logger.info(f"🧹 Removed reports dir: {settings.REPORTS_DIR}")
+
+	return {"status": "ok"}
+

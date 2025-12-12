@@ -17,6 +17,8 @@ def route_after_router(state: AgentState) -> str:
 def route_after_analyst(state: AgentState) -> str:
 	if state.get("status") == ProcessingStatus.COMPLETED:
 		return "final_output"
+	if state.get("status") == ProcessingStatus.WAITING_FOR_INPUT:
+		return END
 	if state.get("scenarios") and len(state["scenarios"]) > 1:
 		return "batch"
 	return "coder"
@@ -60,7 +62,8 @@ def create_workflow() -> StateGraph:
 		{
 			"coder": "coder",
 			"batch": "batch",
-			"final_output": "final_output"
+			"final_output": "final_output",
+			END: END
 		}
 	)
 

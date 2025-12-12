@@ -1,7 +1,7 @@
 import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
 
-export type GenerationStatus = 'idle' | 'processing' | 'success' | 'error';
+export type GenerationStatus = 'idle' | 'processing' | 'success' | 'error' | 'waiting_for_input';
 export type EditorFile = 'code' | 'plan' | 'report';
 
 export interface ChatMessage {
@@ -256,7 +256,32 @@ export const useAppStore = create<AppState>()(
 			showToast: (message, type) => set({toast: {message, type}}),
 			hideToast: () => set({toast: null}),
 
-			clearWorkspace: () => {
+			clearWorkspace: async (hard = false) => {
+				const { showToast, sessionId } = get();
+
+				if (hard) {
+					try {
+						const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+						const response = await fetch(`${API_URL}/chat/reset`, {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								'X-Session-ID': sessionId,
+							},
+						});
+
+						if (!response.ok) {
+							throw new Error('Failed to reset backend state');
+						}
+						showToast('Full workspace reset', 'success');
+					} catch (error) {
+						console.error('Failed to clear workspace:', error);
+						showToast(`Error during full reset: ${(error as Error).message}`, 'error');
+						// Do not proceed with frontend reset if backend fails
+						return;
+					}
+				}
+
 				set({
 					messages: [],
 					logs: [],
@@ -268,6 +293,10 @@ export const useAppStore = create<AppState>()(
 					reportUrl: null,
 					activeEditorFile: 'code',
 				});
+
+				if (!hard) {
+					// showToast('Workspace cleared', 'info');
+				}
 			},
 
 			reportUrl: null,
@@ -358,6 +387,15 @@ export const useAppStore = create<AppState>()(
 												console.log('[SSE] Handling "log" event.');
 												addLog(data.content);
 											}
+											if (data.type === 'message') {
+												console.log('[SSE] Handling "message" event.');
+												addMessage({
+													id: crypto.randomUUID(),
+													role: 'assistant',
+													content: data.content,
+													timestamp: Date.now()
+												});
+											}
 											if (data.type === 'code') {
 												console.log('[SSE] Handling "code" event.');
 												setCode(data.content);
@@ -370,16 +408,25 @@ export const useAppStore = create<AppState>()(
 												console.log('[SSE] Handling "status: COMPLETED" event. Setting status to success.');
 												setStatus('success');
 											}
+											if (data.type === 'status' && data.content === 'waiting_for_input') {
+												console.log('[SSE] Handling "status: waiting_for_input" event.');
+												setStatus('waiting_for_input');
+											}
 											if (data.type === 'finish') {
 												console.log('[SSE] Handling "finish" event.');
-												setStatus('success');
-												showToast("Code Updated Successfully!", 'success');
-												addMessage({
-													id: crypto.randomUUID(),
-													role: 'assistant',
-													content: 'Готово! Я обновил код и план тестирования.',
-													timestamp: Date.now()
-												});
+												const finalStatus = get().status;
+												if (finalStatus !== 'waiting_for_input') {
+													setStatus('success');
+													showToast("Code Updated Successfully!", 'success');
+													addMessage({
+														id: crypto.randomUUID(),
+														role: 'assistant',
+														content: 'Готово! Я обновил код и план тестирования.',
+														timestamp: Date.now()
+													});
+												} else {
+													setStatus('idle');
+												}
 											}
 											if (data.type === 'error') {
 												console.log('[SSE] Handling "error" event.');

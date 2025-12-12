@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
 from src.app.agents.batch import process_batch
@@ -82,7 +82,14 @@ async def analyst_node(state: AgentState) -> dict[str, Any]:
 
 	# 1. RAG & Defects
 	defects_context = defect_service.get_relevant_defects(raw_input)
-	cached_code = dedup_service.find_similar(raw_input)
+
+	# Bypass cache for follow-up messages to allow for interactive fixes
+	is_follow_up = len(state.get("messages", [])) > 1
+	if is_follow_up:
+		logger.info("💬 [Analyst] Follow-up message detected. Bypassing RAG cache.")
+		cached_code = None
+	else:
+		cached_code = dedup_service.find_similar(raw_input)
 
 	if cached_code:
 		logger.info("✅ [Analyst] Found exact match in RAG. Skipping generation.")
@@ -135,31 +142,60 @@ async def analyst_node(state: AgentState) -> dict[str, Any]:
 	# 4. LLM Call with Fallback
 	logger.info("🧠 [Analyst] Generating Test Plan...")
 
-	messages = [
-		SystemMessage(content=ANALYST_SYSTEM_PROMPT),
-		HumanMessage(content=f"Context/Requirements:\n{parsed_context}{defects_context}{vision_context}")
-	]
+	# This is the list of messages we will send to the LLM
+	messages_for_llm = []
+
+	# The system prompt should always be first.
+	messages_for_llm.append(SystemMessage(content=ANALYST_SYSTEM_PROMPT))
+
+	# The first user message is special; it contains the core request.
+	# We will transform it into a message with all the rich context we parsed.
+	first_user_message_content = state["user_request"]  # This was set by chat.py
+	rich_context_content = f"Original Request: '{first_user_message_content}'\n\nSupporting Context:\n{parsed_context}{defects_context}{vision_context}"
+	messages_for_llm.append(HumanMessage(content=rich_context_content))
+
+	# Now, append the rest of the conversation, which includes the AI's questions and the user's subsequent answers.
+	# The full history is in `state["messages"]`. The first message in this list is the original user request.
+	# We have already processed it, so we skip it.
+	if len(state["messages"]) > 1:
+		messages_for_llm.extend(state["messages"][1:])
+
 
 	try:
-		response = await llm.ainvoke(messages)
+		response = await llm.ainvoke(messages_for_llm)
 	except Exception as e:
 		logger.error(f"❌ [Analyst] LLM Call Failed with Vision Context: {e}. Retrying WITHOUT vision context...")
 		inspection_logs.append("Analyst: LLM crashed on DOM data. Retrying in blind mode...")
-		messages = [SystemMessage(content=ANALYST_SYSTEM_PROMPT),
-								HumanMessage(content=f"Context/Requirements:\n{parsed_context}{defects_context}")]
+		# Remove vision_context for the retry
+		rich_context_content = f"Original Request: '{first_user_message_content}'\n\nSupporting Context:\n{parsed_context}{defects_context}"
+		messages_for_llm[1] = HumanMessage(content=rich_context_content) # Update the human message
 		try:
-			response = await llm.ainvoke(messages)
+			response = await llm.ainvoke(messages_for_llm)
 		except Exception as e2:
 			logger.error(f"❌ [Analyst] LLM Failed again: {e2}")
 			raise e2
 
 	plan = response.content
 
+	# NEW: Check for empty or whitespace-only plan
+	if not plan or not plan.strip():
+		logger.warning("⚠️ [Analyst] LLM returned an empty plan. Asking for clarification.")
+		question = "I wasn't able to generate a test plan from the provided context. Could you please clarify the task or provide more details about what needs to be tested?"
+		return {
+			"messages": [AIMessage(content=question)],
+			"status": ProcessingStatus.WAITING_FOR_INPUT,
+			"logs": ["Analyst: The LLM failed to generate a plan, asking for user clarification."]
+		}
+
 	# AMBIGUITY CHECK
 	if plan.strip().startswith("[CLARIFICATION]"):
 		logger.info("⚠️ [Analyst] Ambiguous request. Asking for user clarification.")
-		return {"generated_code": plan, "status": ProcessingStatus.COMPLETED,
-						"logs": ["Analyst: The request is ambiguous. Please provide more details."]}
+		question = plan.replace("[CLARIFICATION]", "").strip()
+		return {
+			"messages": [AIMessage(content=question)],
+			"status": ProcessingStatus.WAITING_FOR_INPUT,
+			"logs": ["Analyst: The request is ambiguous, asking for user clarification."]
+		}
 
 	t_type = TestType.API if "api" in raw_input.lower() or git_url_match else TestType.UI
 
@@ -326,6 +362,9 @@ async def reviewer_node(state: AgentState) -> dict[str, Any]:
 		logger.info("✅ [Reviewer] Code is VALID.")
 		dedup_service.save(state['user_request'], new_state["generated_code"])
 		new_state["status"] = ProcessingStatus.COMPLETED
+		ai_message_content = (f"I have generated the following code:\n```python\n{new_state['generated_code']}\n```\n\n"
+		                      f"What would you like to do next?")
+		new_state["messages"] = [AIMessage(content=ai_message_content)]
 		new_state["logs"] = ["Reviewer: Code passed all checks (Static + Dry Run). Ready for dispatch.",
 												 "System: Saved to Knowledge Base."]
 		return new_state

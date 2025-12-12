@@ -79,7 +79,7 @@ export const HistoryList = () => {
 				const data: TestRunDetails = await res.json();
 
 				// Reset state
-				clearWorkspace();
+				await clearWorkspace();
 
 				// Set new state
 				setInput('');
@@ -106,16 +106,17 @@ export const HistoryList = () => {
 		}
 	};
 
-	const handleNewChat = () => {
-		clearWorkspace();
+	const handleNewChat = async () => {
+		await clearWorkspace(true);
 		setInput('');
-		showToast('New session started', 'info');
 	}
 
 	const handleDebugClick = (e: React.MouseEvent, runId: number) => {
 		e.stopPropagation();
 		fetchAndShowDebugReport(runId);
 	}
+
+
 
 	return (
 		<div className="flex flex-col h-full bg-[#1f2126] rounded-2xl border border-white/5 overflow-hidden">
