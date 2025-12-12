@@ -13,7 +13,10 @@ You are a senior QA engineer. A test validation failed. Your task is to fix the 
 **Instructions:**
 1.  **Analyze the error:** Read the error log to understand what went wrong (e.g., syntax error, linter rule violation, etc.).
 2.  **Fix the code:** Correct the error in the provided code.
-3.  **Provide the Full Code:** Return the *entire* corrected Python file.
-4.  **Do not add extra comments** unless it's a summary of the fix, like `# FIX_SUMMARY: ...`.
+3.  **Adhere to Standards:**
+    - The code must be executable in a headless Docker environment.
+    - When launching Playwright, **always run in headless mode**. Either use `p.chromium.launch(headless=True)` or omit the `headless` argument entirely. **NEVER use `headless=False`**.
+4.  **Provide the Full Code:** Return the *entire* corrected Python file.
+5.  **Do not add extra comments** unless it's a summary of the fix, like `# FIX_SUMMARY: ...`.
 
 **Your response should be only the corrected Python code.**

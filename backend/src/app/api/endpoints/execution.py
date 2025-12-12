@@ -50,12 +50,8 @@ async def run_test(
 	if not run or not run.generated_code_path:
 		raise HTTPException(status_code=404, detail="Test run not found or no code generated.")
 
-	generated_code = storage_service.load(run.generated_code_path)
+	run_test_task.delay(run_id, run.generated_code_path)
 
-	# Отправляем задачу в Celery
-	run_test_task.delay(run_id, generated_code)
-
-	# Обновляем статус в БД
 	run.execution_status = "PENDING"
 	await db.commit()
 

@@ -4,6 +4,7 @@ import shutil
 import asyncio
 import json
 import time
+import threading
 
 import docker
 from docker.errors import APIError, BuildError, ImageNotFound, NotFound
@@ -42,6 +43,8 @@ class TestExecutorService:
 			logger.error(f"❌ CRITICAL: Docker Daemon unavailable. Error: {e}")
 			self.docker_client = None
 
+	_image_build_lock = threading.Lock()
+
 	def cleanup_all(self):
 		if not self.docker_client:
 			return
@@ -73,19 +76,25 @@ class TestExecutorService:
 			self.docker_client.images.get(image_tag)
 			return True
 		except ImageNotFound:
-			logger.info(f"⚙️ Runner image '{image_tag}' not found. Building...")
-			try:
-				self.docker_client.images.build(
-					path=str(self.settings.BASE_DIR),
-					dockerfile="Dockerfile.runner",
-					tag=image_tag,
-					rm=True
-				)
-				logger.info("✅ Runner image built successfully.")
-				return True
-			except (BuildError, APIError) as e:
-				logger.error(f"❌ Failed to build runner image: {e}")
-				return False
+			with self._image_build_lock:
+				# Double-check if the image was built while waiting for the lock
+				try:
+					self.docker_client.images.get(image_tag)
+					return True
+				except ImageNotFound:
+					logger.info(f"⚙️ Runner image '{image_tag}' not found. Building...")
+					try:
+						self.docker_client.images.build(
+							path=str(self.settings.BASE_DIR),
+							dockerfile="Dockerfile.runner",
+							tag=image_tag,
+							rm=True
+						)
+						logger.info("✅ Runner image built successfully.")
+						return True
+					except (BuildError, APIError) as e:
+						logger.error(f"❌ Failed to build runner image: {e}")
+						return False
 
 	def _is_playwright_remote_enabled(self) -> bool:
 		# Prefer Settings, but allow env override.

@@ -7,6 +7,7 @@ You are a senior QA engineer specializing in test automation. Your task is to wr
 4.  **Code Standards:**
     - Use `pytest` for the test framework.
     - Use `playwright` for UI tests.
+    - **Crucially, when launching Playwright, always run in headless mode. Either use `p.chromium.launch(headless=True)` or omit the `headless` argument entirely. NEVER use `headless=False`.**
     - Follow the Page Object Model (POM) pattern where appropriate.
     - The code must be complete, self-contained, and ready to execute.
 5.  **Output:** Your final response should be ONLY the generated Python code inside a ````python...```` block.

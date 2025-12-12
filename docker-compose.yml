@@ -32,6 +32,19 @@ services:
     networks:
       - forge-network
 
+  runner-builder:
+    image: docker:latest
+    container_name: testops-forge-runner-builder
+    command: >
+      sh -c "docker --host tcp://docker:2375 build -t testops-runner:latest -f /app/backend/Dockerfile.runner /app/backend"
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      docker:
+        condition: service_healthy
+    networks:
+      - forge-network
+
   redis:
     image: redis:7-alpine
     container_name: testops-forge-redis
@@ -60,6 +73,7 @@ services:
       - PLAYWRIGHT_REMOTE_ENABLED=${PLAYWRIGHT_REMOTE_ENABLED:-0}
       - PLAYWRIGHT_BROWSER=${PLAYWRIGHT_BROWSER:-chromium}
     volumes:
+      - testops_storage:/app/storage
       - testops_temp:/app/temp_execution
       - testops_reports:/app/static/reports
       - chroma_model_cache:/root/.cache/chroma
@@ -72,12 +86,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      runner-builder:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8000/api/v1/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 15
+      start_period: 30s
     networks:
       - forge-network
 
@@ -99,6 +115,7 @@ services:
       - PLAYWRIGHT_REMOTE_ENABLED=${PLAYWRIGHT_REMOTE_ENABLED:-0}
       - PLAYWRIGHT_BROWSER=${PLAYWRIGHT_BROWSER:-chromium}
     volumes:
+      - testops_storage:/app/storage
       - testops_temp:/app/temp_execution
       - testops_reports:/app/static/reports
       - chroma_model_cache:/root/.cache/chroma
@@ -109,6 +126,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      runner-builder:
+        condition: service_completed_successfully
     networks:
       - forge-network
 
@@ -158,6 +177,7 @@ networks:
 volumes:
   postgres_data:
   chroma_data:
+  testops_storage:
   testops_temp:
   testops_reports:
   testops_dind_data:
