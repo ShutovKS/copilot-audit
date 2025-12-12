@@ -1,0 +1,21 @@
+# Используем базу, похожую на ваш прод
+FROM python:3.11-slim
+
+# Установка системных зависимостей
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    nodejs \
+    npm \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+# Установка Node.js зависимостей (если нужно глобально)
+RUN npm install -g pnpm yarn
+
+# Рабочая директория (Gemini сюда смонтирует ваш проект)
+WORKDIR /workspace
+
+# Настройка пользователя (чтобы не было проблем с правами на Linux/Mac)
+# Обычно Gemini CLI сам мапит UID/GID, но Docker внутри контейнера требует root или группы docker.
+# Для простоты в dev-режиме остаемся root, но будьте аккуратны.

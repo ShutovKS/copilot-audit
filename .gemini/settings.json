@@ -1,0 +1,44 @@
+{
+  "general": {
+    "previewFeatures": true,
+    "enablePromptCompletion": true,
+    "disableAutoUpdate": false
+  },
+  "ide": {
+    "enabled": true
+  },
+  "experimental": {
+    "codebaseInvestigatorSettings": {
+      "enabled": true,
+      "maxNumTurns": 30
+    }
+  },
+  "tools": {
+    "sandbox": "docker",  
+    "useRipgrep": true,
+    "autoAccept": true,
+    "truncateToolOutputThreshold": 50000,
+    "shell": {
+      "enableInteractiveShell": true,
+      "showColor": true
+    }
+  },
+  "ui": {
+    "showLineNumbers": true,
+    "showStatusInTitle": true,
+    "showCitations": true,
+    "showMemoryUsage": true,
+    "hideTips": true,
+    "useFullWidth": true
+  },
+  "context": {
+    "discoveryMaxDirs": 500,
+    "fileFiltering": {
+      "enableRecursiveFileSearch": true,
+      "disableFuzzySearch": false
+    }
+  },
+  "security": {
+    "disableYoloMode": false
+  }
+}

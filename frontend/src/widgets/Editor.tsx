@@ -7,7 +7,7 @@ import { api, exportToGitLab } from '../shared/api/client';
 export const CodeEditor = () => {
 	const {
 		code: storeCode, testPlan, editorSettings, addLog, status, currentRunId, sendMessage, setCode,
-		reportUrl, setReportUrl, activeEditorFile, setActiveEditorFile
+		reportUrl, setReportUrl, activeEditorFile, setActiveEditorFile, sessionId
 	} = useAppStore();
 	const [displayCode, setDisplayCode] = useState('');
 	const [copied, setCopied] = useState(false);
@@ -94,27 +94,60 @@ export const CodeEditor = () => {
 		addLog("System: Initializing execution environment...");
 
 		try {
-			addLog(`System: Running pytest for Run ID ${currentRunId}...`);
-			const res = await api.post(`/execution/${currentRunId}/run`);
+			// 1. Start the task (returns immediately with status='queued')
+			await api.post(`/execution/${currentRunId}/run`);
+			addLog(`System: Test run #${currentRunId} queued. Waiting for worker...`);
 
-			if (res.data.success) {
-				addLog("System: Execution Successful!");
-			} else {
-				addLog("System: Execution Failed. Check logs.");
-				if (res.data.logs) setLastErrorLogs(res.data.logs);
-			}
+			// 2. Open Stream to listen for logs from Redis
+			const API_URL = '/api/v1';
+			const response = await fetch(`${API_URL}/execution/${currentRunId}/logs`, {
+				headers: {
+					'X-Session-ID': sessionId
+				}
+			});
 
-			const logs = res.data.logs;
-			if (logs && logs.trim()) {
-				addLog(`Pytest Execution Log:${logs}`);
-			}
+			if (!response.ok) throw new Error("Failed to connect to log stream");
 
-			if (res.data.report_url) {
-				const apiUrl = '/api/v1';
-				const fullUrl = apiUrl.replace('/api/v1', '') + res.data.report_url;
-				setReportUrl(fullUrl);
-				setActiveEditorFile('report');
-				addLog(`System: Report generated: ${fullUrl}`);
+			const reader = response.body?.getReader();
+			const decoder = new TextDecoder();
+			let fullLogs = "";
+
+			if (reader) {
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+
+					const chunk = decoder.decode(value, { stream: true });
+					const lines = chunk.split('\n\n');
+
+					for (const line of lines) {
+						if (line.startsWith('data: ')) {
+							try {
+								const data = JSON.parse(line.replace('data: ', ''));
+								if (data.content) {
+									addLog(`Executor: ${data.content}`);
+									fullLogs += data.content + "\n";
+
+									const upperContent = data.content.toUpperCase();
+
+									// Robust check for success (Worker sends 'finished: success' or 'finished: SUCCESS')
+									if (upperContent.includes("FINISHED: SUCCESS") || upperContent.includes("FINISHED: success")) {
+										const reportLink = `/static/reports/${currentRunId}/index.html`;
+										setReportUrl(reportLink);
+										setActiveEditorFile('report');
+										addLog(`System: Report ready at ${reportLink}`);
+									}
+									
+									if (upperContent.includes("FAILURE") || upperContent.includes("FATAL")) {
+										setLastErrorLogs(fullLogs);
+									}
+								}
+							} catch (e) { 
+								// ignore parsing errors
+							}
+						}
+					}
+				}
 			}
 
 		} catch (e) {
@@ -134,7 +167,7 @@ export const CodeEditor = () => {
 		setCode("# Fixing code... please wait...");
 
 		// Construct the payload and send it via the centralized store action
-		const fixPayload = `[AUTO-FIX] Failed Logs:${lastErrorLogs}`;
+		const fixPayload = `[AUTO-FIX]\nFailed Logs:${lastErrorLogs}`;
 		sendMessage(fixPayload);
 	};
 

@@ -36,7 +36,7 @@ Backend-сервис для автономной генерации, валид�
 ### 4. Изолированное исполнение и отчетность
 
 - **Custom Runner**: Система автоматически собирает и кэширует Docker-образ `testops-runner`, содержащий Python, Java (Allure), Playwright и браузеры.
-- **Sandbox**: Каждый тест запускается в эфемерном контейнере с монтированием томов.
+- **Sandbox**: Каждый тест запускается в эфемерном контейнере, полностью изолированном через Docker-in-Docker (DinD) подход, с жесткими лимитами на CPU, память и процессы для защиты системы от перегрузок и вредоносного кода. Монтирование томов используется для обмена файлами.
 - **Allure Reporting**: Автоматическая генерация отчетов, хостинг статики и очистка результатов.
 
 ### 5. Самовосстановление (Self-Healing & Debugging)
@@ -55,21 +55,36 @@ Backend-сервис для автономной генерации, валид�
 
 ## 🏗 Архитектура
 
-Проект построен на **FastAPI** и использует **LangGraph** для управления состоянием агентов.
+Проект построен на **FastAPI** и использует **LangGraph** для управления состоянием агентов **генерации** тестов, а **Celery** и **Redis** для их **асинхронного выполнения** и **потоковой передачи логов**.
 
 ```mermaid
 graph TD
-    User --> Router
-    Router -->|UI/API Gen| Analyst
-    Router -->|Debug| Coder
-    Analyst -->|Single Scenario| Coder
-    Analyst -->|Multi Scenario| Batch[Batch Processing]
-    Batch --> Final
-    Coder --> Reviewer
-    Reviewer -->|Valid| Final[Save & Execute]
-    Reviewer -->|Invalid| Coder
-    Final --> Scheduler[Health Check Loop]
-    Scheduler -.->|Failure| AutoFix[Trigger Debug Workflow]
+
+    subgraph "Test Generation"
+        direction TB
+        User --> Router
+        Router -->|UI/API Gen| Analyst
+        Router -->|Debug| Coder
+        Analyst -->|Single Scenario| Coder
+        Analyst -->|Multi Scenario| Batch[Batch Processing]
+        Batch --> FinalGen(Generated Code)
+        Coder --> Reviewer
+        Reviewer -->|Valid| QueueTask(Queue Task in Celery)
+        Reviewer -->|Invalid| Coder
+    end
+
+    subgraph "Async Execution & Healing"
+        direction TB
+        QueueTask --> Redis[(Redis Broker)]
+        Redis --> Worker[Celery Worker]
+        Worker -->|Run in Docker| Executor
+        Executor -->|Success| FinalReport(Allure Report)
+        Executor -->|Failure Trace| AutoFix[Trigger Debug Workflow]
+        AutoFix --> Coder
+        Scheduler[Clock] -.->|Failure| AutoFix
+        Scheduler -.->|Health Check| QueueTask
+    end
+
 ```
 
 ### Основные модули
@@ -79,6 +94,9 @@ graph TD
 - `src/app/services/tools/` — Инструментарий (Linter, WebInspector, TraceInspector).
 - `src/app/services/executor.py` — Оркестрация Docker-контейнеров (Docker-in-Docker).
 - `src/app/services/scheduler.py` — Планировщик фоновых задач Health Check.
+- `src/app/core/celery_app.py` — Конфигурация Celery.
+- `src/app/core/redis.py` — Настройка клиента Redis для Pub/Sub.
+- `src/app/tasks.py` — Celery-задачи для асинхронного выполнения.
 
 ---
 
@@ -90,6 +108,7 @@ graph TD
   - *Router*: `Qwen/Qwen3-Next-80B-A3B-Instruct`
   - *Coder/Analyst*: `Qwen/Qwen3-Coder-480B-A35B-Instruct`
 - **Orchestration**: LangChain, LangGraph
+- **Task Queue**: Celery, Redis
 - **Task Scheduling**: APScheduler
 - **Linting**: Ruff (Formatter/Linter), AST (Security)
 - **Database**: PostgreSQL (Asyncpg + SQLAlchemy)
@@ -101,60 +120,21 @@ graph TD
 
 ## ⚙️ Установка и запуск
 
+Все компоненты сервиса (backend, frontend, worker, redis, базы данных, dind) запускаются с помощью Docker Compose.
+
 ### Предварительные требования
 
 - Docker & Docker Compose
-- Python 3.11+
-- Poetry
-- PostgreSQL
 
-### Локальная разработка
+### Запуск
 
-1. **Установка зависимостей:**
-
-   ```bash
-   poetry install
-   ```
-
-2. **Настройка окружения:**
-   Создайте файл `.env` на основе `.env.example`.
-   *Важно: Для `DATABASE_URL` при запуске в Docker используйте `host.docker.internal` вместо `localhost`, если БД запущена на хосте.*
-
-   ```ini
-   ENVIRONMENT=dev
-   CLOUD_RU_API_KEY=your_key
-   CLOUD_RU_BASE_URL=https://foundation-models.api.cloud.ru/v1
-   MODEL_NAME=Qwen/Qwen3-Coder-480B-A35B-Instruct
-   DATABASE_URL=postgresql+asyncpg://testops:testops@localhost:5432/testops
-   CHROMA_HOST=localhost
-   CHROMA_PORT=8001
-   ```
-
-3. **Запуск инфраструктуры:**
-
-   ```bash
-   docker run --name testops-pg -e POSTGRES_PASSWORD=testops -e POSTGRES_USER=testops -e POSTGRES_DB=testops -p 5432:5432 -d postgres:15
-   # ChromaDB запускается отдельно или используется embedded режим (по умолчанию server-mode в коде)
-   ```
-
-4. **Запуск бэкенда:**
-
-   ```bash
-   poetry run uvicorn src.app.main:app --reload --port 8000
-   ```
-
-### Docker Run (Full App)
+Для запуска всего приложения:
 
 ```bash
-docker build -t testops-backend .
-docker run --name testops-backend \
-  --env-file .env \
-  -p 8000:8000 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  testops-backend
+docker-compose up --build -d
 ```
 
-*Примечание: Проброс сокета Docker (`-v /var/run/docker.sock:/var/run/docker.sock`) критически важен, так как агент запускает тесты в дочерних контейнерах.*
+Приложение будет доступно по адресу `http://localhost`.
 
 ---
 

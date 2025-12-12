@@ -6,11 +6,42 @@ services:
       - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
+      - testops_reports:/usr/share/nginx/html/static/reports
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     networks:
       - forge-network
+
+  docker:
+    image: docker:24-dind
+    container_name: testops-forge-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - testops_dind_data:/var/lib/docker
+      - testops_temp:/app/temp_execution
+    healthcheck:
+      test: ["CMD", "docker", "ps"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    networks:
+      - forge-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: testops-forge-redis
+    networks:
+      - forge-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
@@ -20,19 +51,62 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      - DOCKER_HOST=tcp://docker:2375
       - DATABASE_URL=postgresql+asyncpg://testops:testops@db:5432/testops
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PLAYWRIGHT_REMOTE_ENABLED=${PLAYWRIGHT_REMOTE_ENABLED:-0}
+      - PLAYWRIGHT_BROWSER=${PLAYWRIGHT_BROWSER:-chromium}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - testops_temp:/app/temp_execution
       - testops_reports:/app/static/reports
-    privileged: true
     depends_on:
       db:
         condition: service_healthy
       chromadb:
         condition: service_started
+      docker:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - forge-network
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: testops-forge-worker
+    command: celery -A src.app.core.celery_app worker -l INFO
+    env_file:
+      - ./backend/.env
+    environment:
+      - DOCKER_HOST=tcp://docker:2375
+      - DATABASE_URL=postgresql+asyncpg://testops:testops@db:5432/testops
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PLAYWRIGHT_REMOTE_ENABLED=${PLAYWRIGHT_REMOTE_ENABLED:-0}
+      - PLAYWRIGHT_BROWSER=${PLAYWRIGHT_BROWSER:-chromium}
+    volumes:
+      - testops_temp:/app/temp_execution
+      - testops_reports:/app/static/reports
+    depends_on:
+      db:
+        condition: service_healthy
+      docker:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - forge-network
 
@@ -41,8 +115,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: testops-forge-frontend
-    depends_on:
-      - backend
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost/"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     networks:
       - forge-network
 
@@ -80,3 +158,4 @@ volumes:
   chroma_data:
   testops_temp:
   testops_reports:
+  testops_dind_data:

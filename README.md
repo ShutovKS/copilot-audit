@@ -56,30 +56,44 @@
 
 ## 🏗 Архитектура
 
-Система построена на оркестраторе **LangGraph** с поддержкой циклических графов:
+Система построена на оркестраторе **LangGraph** с поддержкой циклических графов для **генерации** тестов и **Celery** для их **асинхронного выполнения**.
+
+* **FastAPI Backend (`backend`):** Основное API для взаимодействия с пользователем, управления состоянием и потоковой передачи логов.
+* **Celery Worker (`worker`):** Фоновый сервис, который забирает задачи на выполнение тестов из очереди.
+* **Redis (`redis`):** Выполняет роль брокера сообщений для Celery и канала для потоковой передачи логов в реальном времени.
 
 ```mermaid
 graph TD
-    User[User Chat] -->|Request| Router
-    Router -->|New Test| Analyst
-    Router -->|Fix Request| Debugger
-    
-    Analyst -->|Check URL| Inspector[Web Inspector]
-    Inspector -->|DOM Context| Analyst
-    
-    Analyst -->|Single Scenario| Coder
-    Analyst -->|Multiple Scenarios| Batch[Batch Processor]
-    
-    Batch -->|Parallel Gen| Coder
-    Coder -->|Code| Reviewer
-    Reviewer -->|Static Analysis| End
-    
-    End -->|Run Test| Executor[Docker Executor]
-    Executor -->|Failure Trace| Debugger
-    Debugger -->|Fix Code| Executor
-    
-    Scheduler[Clock] -.->|Health Check| Executor
+    subgraph "Test Generation"
+        direction TB
+        User[User Chat] -->|Request| Router
+        Router -->|New Test| Analyst
+        Router -->|Fix Request| Debugger
+        Analyst -->|Check URL| Inspector[Web Inspector]
+        Inspector -->|DOM Context| Analyst
+        Analyst -->|Split Task| Batch[Batch Processor]
+        Batch -->|Parallel Gen| Coder
+        Analyst -->|Single Task| Coder
+        Coder -->|Generated Code| Reviewer
+        Reviewer -->|Static Analysis OK| QueueTask(Queue Task in Celery)
+    end
+    subgraph "Async Execution & Healing"
+        direction TB
+        QueueTask --> Redis[(Redis Broker)]
+        Redis --> Worker[Celery Worker]
+        Worker -->|Run in Docker| Executor
+        Executor -->|Success| End(Report Ready)
+        Executor -->|Failure Trace| Debugger
+        Scheduler[Clock] -.->|Health Check| QueueTask
+    end
+
 ```
+
+### 7. 🛡️ Изолированное и Стабильное Исполнение
+
+* **DinD-изоляция:** Тесты запускаются в полностью изолированном Docker-демоне (`DinD`), что предотвращает риск воздействия на хост-систему.
+* **Контроль ресурсов:** Каждый тестовый контейнер работает с жесткими лимитами по CPU, памяти и процессам, защищая систему от DoS-атак.
+* **Надежный запуск:** Улучшенная конфигурация Nginx и Docker Compose гарантирует стабильный запуск всех сервисов и отсутствие таймаутов при долгих операциях.
 
 ## 🛠 Технологический Стек
 
@@ -87,6 +101,7 @@ graph TD
 
 * **Core:** Python 3.11, FastAPI
 * **AI Orchestration:** LangGraph, LangChain
+* **Async Tasks:** Celery, Redis
 * **Testing Engine:** Playwright, Pytest, Allure
 * **Data:** PostgreSQL (Async), ChromaDB (Vector Search)
 * **Parsers:** Python AST, JavaParser, Tree-Sitter
@@ -116,6 +131,7 @@ graph TD
     ```
 
 2. **Запуск**
+    Эта команда соберёт и запустит все сервисы, включая `backend`, `frontend`, `worker`, `redis` и базы данных.
 
     ```bash
     docker-compose up --build -d

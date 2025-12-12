@@ -1,23 +1,29 @@
-from typing import Annotated  # Added import for Annotated
+import asyncio
+import json
+import logging
+from typing import Annotated
 
+import redis.asyncio as redis
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from src.app.core.config import get_settings
 from src.app.core.database import get_db
 from src.app.domain.models import TestRun
-from src.app.services.executor import TestExecutorService
 from src.app.services.tools.trace_inspector import TraceInspector
+from src.app.tasks import run_test_task
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 class ExecutionResponse(BaseModel):
 	run_id: int
-	success: bool
-	logs: str
-	report_url: str | None
+	status: str
+	message: str
 
 
 class DebugContextResponse(BaseModel):
@@ -43,21 +49,51 @@ async def run_test(
 	if not run or not run.generated_code:
 		raise HTTPException(status_code=404, detail="Test run not found or no code generated")
 
-	executor = TestExecutorService()
-	success, logs, report_url = await executor.execute_test(run.id, run.generated_code)
+	# Отправляем задачу в Celery
+	run_test_task.delay(run_id, run.generated_code)
 
-	run.execution_status = "SUCCESS" if success else "FAILURE"
-	run.execution_logs = logs
-	run.report_url = report_url
-
+	# Обновляем статус в БД
+	run.execution_status = "PENDING"
 	await db.commit()
-	await db.refresh(run)
 
 	return ExecutionResponse(
 		run_id=run.id,
-		success=success,
-		logs=logs,
-		report_url=report_url
+		status="queued",
+		message="Task execution started in background"
+	)
+
+
+async def log_stream_generator(run_id: int):
+	"""
+	Подписывается на Redis канал и стримит логи клиенту.
+	"""
+	settings = get_settings()
+	redis_client = redis.from_url(settings.CELERY_BROKER_URL, encoding="utf-8", decode_responses=True)
+	pubsub = redis_client.pubsub()
+	channel = f"run:{run_id}:logs"
+
+	await pubsub.subscribe(channel)
+
+	try:
+		async for message in pubsub.listen():
+			if message['type'] == 'message':
+				data = message['data']
+				if data == "---EOF---":
+					break
+				yield f"data: {json.dumps({'content': data})}\n\n"
+	finally:
+		await pubsub.unsubscribe(channel)
+		await redis_client.aclose()
+
+
+@router.get("/{run_id}/logs")
+async def stream_test_logs(
+		run_id: int,
+		x_session_id: str = Header(..., alias="X-Session-ID")
+):
+	return StreamingResponse(
+		log_stream_generator(run_id),
+		media_type="text/event-stream"
 	)
 
 
@@ -75,16 +111,20 @@ async def get_debug_context(
 	if not run:
 		raise HTTPException(status_code=404, detail="Test run not found")
 
-	if run.execution_status != "FAILURE" or not run.execution_logs:
-		raise HTTPException(status_code=400, detail="Debug context is only available for failed runs with logs")
-
+	# Разрешаем запрос контекста, даже если статус не FAILURE (для дебага)
 	inspector = TraceInspector()
-	# The 'original_error' for the inspector is the execution log
-	context = inspector.get_failure_context(run.id, run.execution_logs)
+	context = inspector.get_failure_context(run.id, run.execution_logs or "")
 
 	if not context:
-		raise HTTPException(status_code=404,
-												detail="Failed to retrieve trace file context. The trace file might be missing or corrupted.")
+		# Если контекста нет, возвращаем пустую заглушку, чтобы фронт не падал
+		return DebugContextResponse(
+			summary="No trace data available.",
+			original_error=run.execution_logs or "No logs available.",
+			dom_snapshot="",
+			network_errors=[],
+			console_logs=[],
+			hypothesis=run.hypothesis
+		)
 
 	return DebugContextResponse(
 		summary=context.get("summary", "N/A"),
@@ -92,5 +132,5 @@ async def get_debug_context(
 		dom_snapshot=context.get("dom_snapshot", "DOM snapshot not found."),
 		network_errors=context.get("network_errors", []),
 		console_logs=context.get("console_logs", []),
-		hypothesis=run.hypothesis  # Will be added in the next step
+		hypothesis=run.hypothesis
 	)

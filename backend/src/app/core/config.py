@@ -19,6 +19,14 @@ class Settings(BaseSettings):
 
 	CHROMA_HOST: str = "localhost"
 	CHROMA_PORT: int = 8001
+ 
+	CELERY_BROKER_URL: str = "redis://redis:6379/0"
+	CELERY_RESULT_BACKEND: str = "redis://redis:6379/0"
+
+	# Playwright Remote Browser (via Playwright Browser Server)
+	# When enabled, the runner container will CONNECT to a remote browser over WebSocket.
+	PLAYWRIGHT_REMOTE_ENABLED: bool = False
+	PLAYWRIGHT_BROWSER: str = "chromium"
 
 	BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
 	REPORTS_DIR: Path = BASE_DIR / "static" / "reports"

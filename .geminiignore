@@ -1,0 +1,23 @@
+# Игнорируй зависимости
+node_modules/
+venv/
+__pycache__/
+
+# Игнорируй системные файлы и git
+.git/
+.DS_Store
+
+# Игнорируй секреты (ОБЯЗАТЕЛЬНО!)
+.env
+keys/
+credentials.json
+
+# Игнорируй файлы сборки
+dist/
+build/
+
+# Игнорируй прочие папки
+/presentation/
+.logs/
+/tmp/
+/cache/
