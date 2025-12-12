@@ -33,10 +33,26 @@ const SlideRenderer: React.FC<SlideRendererProps> = ({ slide }) => {
         <div className="h-full flex items-center justify-between px-10">
           <div className="flex flex-col gap-6 max-w-2xl z-10">
             <h1 className="text-7xl font-bold text-white tracking-tight">{slide.title}</h1>
-            <div className="mt-12 bg-[#a3ff00] text-black p-4 inline-block transform -rotate-1 w-fit">
-              <pre className="font-sans font-bold text-xl leading-tight whitespace-pre-wrap">
-                {slide.subtitle}
-              </pre>
+            <div className="mt-12">
+              {Array.isArray(slide.subtitle) ? (
+                slide.subtitle.map((name, index) => (
+                  <div 
+                    key={index} 
+                    className="bg-[#a3ff00] text-black p-2 transform -rotate-1 mb-2 block"
+                    style={{ marginLeft: `${index * 1.5}rem` }}
+                  >
+                    <div className="font-sans font-bold text-xl leading-tight whitespace-pre-wrap">
+                      {name}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="bg-[#a3ff00] text-black p-4 inline-block transform -rotate-1 w-fit">
+                  <pre className="font-sans font-bold text-xl leading-tight whitespace-pre-wrap">
+                    {slide.subtitle}
+                  </pre>
+                </div>
+              )}
             </div>
           </div>
           {/* Decorative Burst Background */}
@@ -44,17 +60,42 @@ const SlideRenderer: React.FC<SlideRendererProps> = ({ slide }) => {
              <div className="w-[800px] h-[800px] bg-[#a3ff00] rounded-full absolute -bottom-40 -right-20 blur-3xl opacity-20"></div>
           </div>
            {/* Speaker Image Placeholder */}
-           <div className="relative z-10 w-1/3 h-2/3 flex items-end justify-center">
-              <div className="w-64 h-80 bg-gray-800 rounded-lg border-2 border-[#a3ff00] overflow-hidden shadow-[10px_10px_0px_0px_rgba(163,255,0,0.5)]">
-                  <img 
-                    src={slide.image} 
-                    alt="Speaker" 
-                    className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500" 
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/speaker/400/600'; // Fallback
+           <div 
+            className="relative z-10 w-1/2 h-2/3 flex items-end justify-center group"
+            style={{ transform: 'translateX(8%)' }}
+           >
+              {Array.isArray(slide.image) ? (
+                slide.image.map((img, index) => (
+                  <div 
+                    key={index}
+                    className="absolute w-64 h-80 bg-gray-800 rounded-lg border-2 border-[#a3ff00] overflow-hidden shadow-[10px_10px_0px_0px_rgba(163,255,0,0.5)] transition-transform duration-300 ease-in-out hover:scale-110 hover:z-20"
+                    style={{
+                      transform: `rotate(${(index - 1) * 12}deg) translate(${(index - 1) * 65}%, 0)`,
+                      zIndex: slide.image.length - index,
                     }}
-                  />
-              </div>
+                  >
+                    <img 
+                      src={img} 
+                      alt={`Speaker ${index + 1}`}
+                      className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500" 
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/speaker/400/600'; // Fallback
+                      }}
+                    />
+                  </div>
+                ))
+              ) : (
+                <div className="w-64 h-80 bg-gray-800 rounded-lg border-2 border-[#a3ff00] overflow-hidden shadow-[10px_10px_0px_0px_rgba(163,255,0,0.5)]">
+                    <img 
+                      src={slide.image} 
+                      alt="Speaker" 
+                      className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500" 
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/speaker/400/600'; // Fallback
+                      }}
+                    />
+                </div>
+              )}
            </div>
         </div>
       );

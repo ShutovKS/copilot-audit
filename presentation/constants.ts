@@ -5,8 +5,8 @@ export const SLIDES: SlideData[] = [
     id: 1,
     type: SlideType.TITLE,
     title: "Smart ValidOps",
-    subtitle: "Кирилл Корнилов\nКапитан команды",
-    image: "./my_photo.jpg" // Ensure this file is in the public folder
+    subtitle: ["Данилов Михаил", "Корнилов Кирилл", "Шутов Кирилл"],
+    image: ["./danilov_photo.jpg", "./kornilov_photo.jpg", "./shutov_photo.jpg"]
   },
   {
     id: 2,

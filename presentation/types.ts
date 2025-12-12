@@ -12,10 +12,10 @@ export interface SlideData {
   id: number;
   type: SlideType;
   title?: string;
-  subtitle?: string;
+  subtitle?: string | string[];
   content?: any;
   code?: string;
-  image?: string;
+  image?: string | string[];
 }
 
 export interface CardData {
