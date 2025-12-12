@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV POETRY_HOME="/opt/poetry" \
     PATH="$POETRY_HOME/bin:$PATH" \
-    POETRY_NO_INTERACTION=1
+    POETRY_NO_INTERACTION=1 \
+    POETRY_REQUESTS_TIMEOUT=3000
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install poetry
@@ -19,6 +20,8 @@ COPY pyproject.toml poetry.lock* ./
 
 RUN poetry config virtualenvs.create false \
     && poetry install --no-root --without dev --no-interaction --no-ansi
+
+RUN rm -rf /root/.cache
 
 FROM python:3.11-slim-bookworm
 

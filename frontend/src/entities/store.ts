@@ -261,7 +261,7 @@ export const useAppStore = create<AppState>()(
 
 				if (hard) {
 					try {
-						const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+						const API_URL = '/api/v1';
 						const response = await fetch(`${API_URL}/chat/reset`, {
 							method: 'POST',
 							headers: {
@@ -334,7 +334,7 @@ export const useAppStore = create<AppState>()(
 				addLog(`System: Sending message to Chat Agent...`);
 				console.log('[SSE] Initiating new message stream...');
 
-				const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+				const API_URL = '/api/v1';
 				try {
 					const response = await fetch(`${API_URL}/chat/message`, {
 						method: 'POST',
@@ -475,7 +475,7 @@ export const useAppStore = create<AppState>()(
 				try {
 					setStatus('processing');
 					showToast('Fetching debug report...', 'info');
-					const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+					const API_URL = '/api/v1';
 					const response = await fetch(`${API_URL}/execution/${runId}/debug-context`, {
 						headers: {
 							'X-Session-ID': sessionId

@@ -4,7 +4,7 @@ import {useState, useRef, useEffect} from 'react';
 import {analyzeSourceCode, analyzeGitRepo} from '../shared/api/client';
 
 export const Sidebar = () => {
-	const {input, setInput, clearWorkspace, status, messages, setCurrentRunId, sendMessage, showToast} = useAppStore();
+	const {input, setInput, clearWorkspace, status, messages, sendMessage, showToast} = useAppStore();
 	const [isEnhancing, setIsEnhancing] = useState(false);
 	const [showGitInput, setShowGitInput] = useState(false);
 	const [gitUrl, setGitUrl] = useState('');
@@ -28,7 +28,7 @@ export const Sidebar = () => {
 	};
 
 	const handleNewChat = async () => {
-		await clearWorkspace(true);
+		await clearWorkspace();
 		setInput('');
 	}
 
@@ -37,7 +37,7 @@ export const Sidebar = () => {
 		if (!input.trim()) return;
 		setIsEnhancing(true);
 		try {
-			const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+			const API_URL = '/api/v1';
 			const res = await fetch(`${API_URL}/enhance`, {
 				method: 'POST',
 				headers: {'Content-Type': 'application/json'},

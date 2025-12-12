@@ -40,7 +40,7 @@ export const HistoryList = () => {
 	const fetchHistory = useCallback(async () => {
 		setLoading(true);
 		try {
-			const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+			const API_URL = '/api/v1';
 			const res = await fetch(`${API_URL}/history`, {
 				headers: {
 					'X-Session-ID': sessionId
@@ -68,7 +68,7 @@ export const HistoryList = () => {
 	const loadRun = async (run: TestRun) => {
 		setLoadingRun(run.id);
 		try {
-			const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+			const API_URL = '/api/v1';
 			const res = await fetch(`${API_URL}/history/${run.id}`, {
 				headers: {
 					'X-Session-ID': sessionId
@@ -107,7 +107,7 @@ export const HistoryList = () => {
 	};
 
 	const handleNewChat = async () => {
-		await clearWorkspace(true);
+		await clearWorkspace();
 		setInput('');
 	}
 

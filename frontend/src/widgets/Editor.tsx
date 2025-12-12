@@ -1,8 +1,8 @@
 import Editor from '@monaco-editor/react';
-import {useAppStore} from '../entities/store';
-import {Copy, Check, Loader2, Play, GitMerge, FileText, Code2, ExternalLink, X, Wrench} from 'lucide-react';
-import {useState, useEffect, useRef} from 'react';
-import {api, exportToGitLab} from '../shared/api/client';
+import { useAppStore } from '../entities/store';
+import { Copy, Check, Loader2, Play, GitMerge, FileText, Code2, ExternalLink, X, Wrench, Download } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { api, exportToGitLab } from '../shared/api/client';
 
 export const CodeEditor = () => {
 	const {
@@ -64,6 +64,22 @@ export const CodeEditor = () => {
 		setTimeout(() => setCopied(false), 2000);
 	};
 
+	const handleDownload = () => {
+		const content = activeEditorFile === 'code' ? storeCode : testPlan;
+		if (!content || activeEditorFile === 'report') return;
+
+		const filename = activeEditorFile === 'code' ? 'test_suite.py' : 'test_plan.md';
+		const blob = new Blob([content], { type: 'text/plain' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+	};
+
 	const handleRunTest = async () => {
 		if (!storeCode || isRunning) return;
 
@@ -94,8 +110,8 @@ export const CodeEditor = () => {
 			}
 
 			if (res.data.report_url) {
-				    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-    const fullUrl = apiUrl.replace('/api/v1', '') + res.data.report_url;
+				const apiUrl = '/api/v1';
+				const fullUrl = apiUrl.replace('/api/v1', '') + res.data.report_url;
 				setReportUrl(fullUrl);
 				setActiveEditorFile('report');
 				addLog(`System: Report generated: ${fullUrl}`);
@@ -127,7 +143,7 @@ export const CodeEditor = () => {
 		setIsExporting(true);
 		try {
 			const data = await exportToGitLab(storeCode, projectId, token, gitlabUrl);
-			setExportResult({url: data.mr_url});
+			setExportResult({ url: data.mr_url });
 		} catch (e) {
 			alert('Export failed: ' + e);
 		} finally {
@@ -146,20 +162,20 @@ export const CodeEditor = () => {
 						onClick={() => setActiveEditorFile('code')}
 						className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeEditorFile === 'code' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
 					>
-						<Code2 size={14} className="text-blue-400"/> test_suite.py
+						<Code2 size={14} className="text-blue-400" /> test_suite.py
 					</button>
 					<button
 						onClick={() => setActiveEditorFile('plan')}
 						className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeEditorFile === 'plan' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
 					>
-						<FileText size={14} className="text-yellow-400"/> test_plan.md
+						<FileText size={14} className="text-yellow-400" /> test_plan.md
 					</button>
 					{reportUrl && (
 						<button
 							onClick={() => setActiveEditorFile('report')}
 							className={`flex items-center gap-2 px-4 rounded-t-lg text-xs font-medium transition-all ${activeEditorFile === 'report' ? 'bg-[#1f2126] text-white border-t border-x border-white/5' : 'text-muted hover:text-white hover:bg-[#1f2126]/50'}`}
 						>
-							<ExternalLink size={14} className="text-primary"/> Allure Report
+							<ExternalLink size={14} className="text-primary" /> Allure Report
 						</button>
 					)}
 				</div>
@@ -170,7 +186,15 @@ export const CodeEditor = () => {
 						className="p-1.5 hover:bg-[#2b2d33] rounded-md text-muted hover:text-white transition-colors"
 						title="Copy Code"
 					>
-						{copied ? <Check size={14} className="text-success"/> : <Copy size={14}/>}
+						{copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+					</button>
+
+					<button
+						onClick={handleDownload}
+						className="p-1.5 hover:bg-[#2b2d33] rounded-md text-muted hover:text-white transition-colors"
+						title="Download File"
+					>
+						<Download size={14} />
 					</button>
 
 					<button
@@ -178,12 +202,12 @@ export const CodeEditor = () => {
 						disabled={!isActionEnabled}
 						className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[10px] font-bold transition-all border
                         ${!isActionEnabled
-							? 'bg-[#2b2d33] text-zinc-600 border-white/5 cursor-not-allowed'
-							: 'bg-secondary/10 hover:bg-secondary/20 text-secondary hover:text-white border-secondary/20'
-						}
+								? 'bg-[#2b2d33] text-zinc-600 border-white/5 cursor-not-allowed'
+								: 'bg-secondary/10 hover:bg-secondary/20 text-secondary hover:text-white border-secondary/20'
+							}
                     `}
 					>
-						<GitMerge size={12}/> Export
+						<GitMerge size={12} /> Export
 					</button>
 
 					<button
@@ -191,12 +215,12 @@ export const CodeEditor = () => {
 						disabled={isRunning || !isActionEnabled}
 						className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[10px] font-bold transition-all border
                         ${isRunning || !isActionEnabled
-							? 'bg-[#2b2d33] text-zinc-600 border-white/5 cursor-not-allowed'
-							: 'bg-[#00b67a] hover:bg-[#00a36d] text-white border-transparent hover:shadow-[0_0_15px_rgba(0,182,122,0.4)] hover:scale-[1.02] active:scale-[0.98]'
-						}
+								? 'bg-[#2b2d33] text-zinc-600 border-white/5 cursor-not-allowed'
+								: 'bg-[#00b67a] hover:bg-[#00a36d] text-white border-transparent hover:shadow-[0_0_15px_rgba(0,182,122,0.4)] hover:scale-[1.02] active:scale-[0.98]'
+							}
                     `}
 					>
-						{isRunning ? <Loader2 size={12} className="animate-spin"/> : <Play size={12} fill="currentColor"/>}
+						{isRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} fill="currentColor" />}
 						Run Test
 					</button>
 				</div>
@@ -204,7 +228,7 @@ export const CodeEditor = () => {
 
 			<div className="flex-1 flex min-h-0 relative">
 				{activeEditorFile === 'report' && reportUrl ? (
-					<iframe src={reportUrl} className="w-full h-full bg-white" title="Allure Report"/>
+					<iframe src={reportUrl} className="w-full h-full bg-white" title="Allure Report" />
 				) : (
 					<div className="flex-1 bg-[#1f2126] relative">
 						<Editor
@@ -214,11 +238,11 @@ export const CodeEditor = () => {
 							value={activeEditorFile === 'code' ? displayCode : (testPlan || '*Test plan not generated yet*')}
 							options={{
 								readOnly: true,
-								minimap: {enabled: editorSettings.minimap},
+								minimap: { enabled: editorSettings.minimap },
 								fontSize: editorSettings.fontSize,
 								wordWrap: editorSettings.wordWrap,
 								fontFamily: 'JetBrains Mono, monospace',
-								padding: {top: 20, bottom: 20},
+								padding: { top: 20, bottom: 20 },
 							}}
 							onMount={(_editor, monaco) => {
 								monaco.editor.defineTheme('cloud-rounded', {
@@ -241,7 +265,7 @@ export const CodeEditor = () => {
 									onClick={handleAutoFix}
 									className="flex items-center gap-2 px-4 py-3 bg-error hover:bg-red-600 text-white rounded-xl shadow-lg font-bold transition-all hover:scale-105"
 								>
-									<Wrench size={18}/> Auto-Fix with AI
+									<Wrench size={18} /> Auto-Fix with AI
 								</button>
 							</div>
 						)}
@@ -255,10 +279,10 @@ export const CodeEditor = () => {
 						{/* Export Modal Content (Same as before) */}
 						<div className="flex justify-between items-center mb-6">
 							<div className="flex items-center gap-2">
-								<GitMerge className="text-secondary"/>
+								<GitMerge className="text-secondary" />
 								<h3 className="text-lg font-bold text-white">Export to GitLab</h3>
 							</div>
-							<button onClick={() => setIsModalOpen(false)} className="text-muted hover:text-white"><X size={20}/>
+							<button onClick={() => setIsModalOpen(false)} className="text-muted hover:text-white"><X size={20} />
 							</button>
 						</div>
 
@@ -267,20 +291,20 @@ export const CodeEditor = () => {
 								<div>
 									<label className="block text-xs font-bold text-muted uppercase mb-1">Project ID</label>
 									<input type="text"
-									       className="w-full bg-[#18191d] border border-white/10 rounded-lg p-3 text-sm text-white focus:border-secondary outline-none transition-colors"
-									       placeholder="e.g. 54321" value={projectId} onChange={e => setProjectId(e.target.value)}/>
+										className="w-full bg-[#18191d] border border-white/10 rounded-lg p-3 text-sm text-white focus:border-secondary outline-none transition-colors"
+										placeholder="e.g. 54321" value={projectId} onChange={e => setProjectId(e.target.value)} />
 								</div>
 								<div>
 									<label className="block text-xs font-bold text-muted uppercase mb-1">Access Token</label>
 									<input type="password"
-									       className="w-full bg-[#18191d] border border-white/10 rounded-lg p-3 text-sm text-white focus:border-secondary outline-none transition-colors"
-									       placeholder="glpat-..." value={token} onChange={e => setToken(e.target.value)}/>
+										className="w-full bg-[#18191d] border border-white/10 rounded-lg p-3 text-sm text-white focus:border-secondary outline-none transition-colors"
+										placeholder="glpat-..." value={token} onChange={e => setToken(e.target.value)} />
 								</div>
 								<div>
 									<label className="block text-xs font-bold text-muted uppercase mb-1">GitLab URL</label>
 									<input type="text"
-									       className="w-full bg-[#18191d] border border-white/10 rounded-lg p-3 text-sm text-white focus:border-secondary outline-none transition-colors"
-									       value={gitlabUrl} onChange={e => setGitlabUrl(e.target.value)}/>
+										className="w-full bg-[#18191d] border border-white/10 rounded-lg p-3 text-sm text-white focus:border-secondary outline-none transition-colors"
+										value={gitlabUrl} onChange={e => setGitlabUrl(e.target.value)} />
 								</div>
 
 								<button
@@ -288,17 +312,17 @@ export const CodeEditor = () => {
 									disabled={isExporting}
 									className="w-full py-3 bg-secondary hover:bg-secondary/80 text-white rounded-xl font-bold flex items-center justify-center gap-2 mt-4 transition-colors"
 								>
-									{isExporting ? <Loader2 className="animate-spin"/> : 'Create Merge Request'}
+									{isExporting ? <Loader2 className="animate-spin" /> : 'Create Merge Request'}
 								</button>
 							</div>
 						) : (
 							<div className="text-center space-y-4">
 								<div className="w-12 h-12 bg-success/20 rounded-full flex items-center justify-center mx-auto">
-									<Check size={24} className="text-success"/>
+									<Check size={24} className="text-success" />
 								</div>
 								<h4 className="text-white font-bold">Merge Request Created!</h4>
 								<a href={exportResult.url} target="_blank" rel="noreferrer"
-								   className="block p-3 bg-[#18191d] rounded-lg text-primary text-sm underline truncate hover:text-white transition-colors">
+									className="block p-3 bg-[#18191d] rounded-lg text-primary text-sm underline truncate hover:text-white transition-colors">
 									{exportResult.url}
 								</a>
 								<button onClick={() => {

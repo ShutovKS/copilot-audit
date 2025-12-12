@@ -73,7 +73,7 @@ export const SettingsModal = ({isOpen, onClose}: SettingsModalProps) => {
 	const checkHealth = async () => {
 		setLoading(true);
 		try {
-			const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+			const API_URL = '/api/v1';
 			const res = await fetch(`${API_URL}/health`);
 			if (res.ok) {
 				const data = await res.json();

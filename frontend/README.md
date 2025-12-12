@@ -4,20 +4,22 @@
 
 ## Особенности UI
 
-*   **Code Editor**: Monaco Editor с поддержкой Python syntax highlighting.
-*   **Streaming Logs**: Отображение процесса мышления агента (Terminal).
-*   **Source Context**: Загрузка ZIP-архивов и клонирование Git-репозиториев для анализа кода.
-*   **Session Management**: Управление сессиями (Account Tab) для сохранения истории.
-*   **Evolution UI**: Темная тема в стиле Cloud.ru Console.
+* **Code Editor**: Monaco Editor с поддержкой Python syntax highlighting.
+* **Streaming Logs**: Отображение процесса мышления агента (Terminal).
+* **Source Context**: Загрузка ZIP-архивов и клонирование Git-репозиториев для анализа кода.
+* **Session Management**: Управление сессиями (Account Tab) для сохранения истории.
+* **Evolution UI**: Темная тема в стиле Cloud.ru Console.
 
 ## Локальная разработка
 
-1.  **Установка зависимостей:**
+1. **Установка зависимостей:**
+
     ```bash
     npm install
     ```
 
-2.  **Запуск Dev-сервера:**
+2. **Запуск Dev-сервера:**
+
     ```bash
     npm run dev
     ```
