@@ -1,8 +1,8 @@
 # TestOps Evolution Forge
 
-**TestOps Evolution Forge** — это автономная Agentic-система на базе **Cloud.ru Evolution**, которая не просто генерирует тесты, а **видит** интерфейс, **понимает** контекст и **чинит** сама себя.
+**TestOps Evolution Forge** — это автономная мульти-агентная система на базе **Cloud.ru Evolution**, которая генерирует, исполняет, отлаживает и **самостоятельно поддерживает** автотесты. Она умеет **видеть** интерфейс, **анализировать** репозитории кода и работать в фоновом режиме.
 
-![Status](https://img.shields.io/badge/Status-Production%20Ready-green) ![AI](https://img.shields.io/badge/AI-Cloud.ru%20Evolution-blue) ![Stack](https://img.shields.io/badge/Stack-FastAPI%20%7C%20LangGraph%20%7C%20Playwright-orange)
+![Status](https://img.shields.io/badge/Status-Production%20Ready-green) ![AI](https://img.shields.io/badge/AI-Cloud.ru%20Evolution-blue) ![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20LangGraph-orange) ![Frontend](https://img.shields.io/badge/Frontend-React%2019%20%7C%20Vite%207-purple)
 
 ## 🚀 Killer Features
 
@@ -11,70 +11,108 @@
 Агент не гадает локаторы. Если вы дадите ему ссылку (например, `https://cloud.ru/calculator`), он:
 
 1. Запустит Headless-браузер (Playwright).
-2. Просканирует DOM-дерево.
+2. Просканирует DOM-дерево, выделяя **семантически важные** элементы.
 3. Извлечет реальные `data-testid`, `id` и `class`.
-4. Напишет тест, который **сразу работает**.
+4. Напишет UI-тест, который **сразу работает**.
 
-### 2. 💬 Conversational Interface (Чат-режим)
+### 2. ⏰ Autonomous Maintenance (Автономное Обслуживание)
 
-Забудьте о "генерации в один клик". Работайте с AI как с коллегой:
+Система не спит, когда вы отдыхаете. Встроенный **Scheduler**:
 
-* *"Сгенерируй тест для логина"*
-* *"Добавь проверку на пустой пароль"*
-* *"Перепиши на Page Object Model"*
+* Каждые 6 часов запускает "Health Check" для существующих тестов.
+* Если тест упал (изменилась верстка или API), система **автоматически** запускает агента отладки.
+* Вы получаете уведомление уже о том, что тест был **починен**.
 
-Система помнит контекст диалога и правит код на лету.
+### 3. 📦 White-Box Analysis (Анализ Кода)
 
-### 3. 🔧 Self-Healing (Авто-починка)
+Система понимает не только UI, но и внутреннюю структуру вашего проекта.
 
-Тест упал? Не проблема.
+* **Deep Parsing:** Поддержка Python (AST), Java (Spring), JS/TS (NestJS, Express).
+* **Smart Context:** Загрузите ZIP или ссылку на Git — агент построит карту эндпоинтов и моделей данных, чтобы написать точные API-тесты.
 
-1. Система анализирует логи ошибок (`TimeoutError`, `AssertionError`).
-2. Вы нажимаете кнопку **Auto-Fix**.
-3. Специализированный `Debugger Agent` изучает StackTrace и исправляет код.
+### 4. ⚡ Parallel Batch Generation
 
-### 4. 🛡️ Smart Quality Gate
+Нужно покрыть тестами весь функционал?
 
-Мы гарантируем валидность кода:
+* Агент-Аналитик умеет разбивать сложные задачи на независимые сценарии.
+* Система генерирует код для нескольких сценариев **параллельно**, экономя ваше время.
 
-* **Static POM Validator:** Проверяет, что вы не вызываете несуществующие методы у Page Objects.
+### 5. 🔧 Self-Healing & Debug Inspector
+
+Тест упал?
+
+1. Система запускает тест в Docker-контейнере.
+2. При падении собирается **Trace Context**: скриншот, сеть, логи консоли.
+3. **Debugger Agent** анализирует трейс, выдвигает гипотезу и правит код.
+
+### 6. 🛡️ Smart Quality Gate
+
+Гарантия качества кода:
+
+* **Static POM Validator:** Проверяет согласованность методов Page Object.
 * **Security Linter:** Блокирует опасные импорты (`os`, `subprocess`).
 * **Style Check:** Форматирование через `ruff`.
+* **Deduplication:** Векторный поиск (ChromaDB) предотвращает дубликаты.
 
 ## 🏗 Архитектура
 
-Система построена на графе агентов (**LangGraph**):
+Система построена на оркестраторе **LangGraph** с поддержкой циклических графов:
 
 ```mermaid
 graph TD
-    User[User Chat] -->|Message| Analyst
-    Analyst -->|Check URL| Inspector[Web Inspector Tool]
-    Inspector -->|DOM Tree| Analyst
-    Analyst -->|Plan| Coder
+    User[User Chat] -->|Request| Router
+    Router -->|New Test| Analyst
+    Router -->|Fix Request| Debugger
+    
+    Analyst -->|Check URL| Inspector[Web Inspector]
+    Inspector -->|DOM Context| Analyst
+    
+    Analyst -->|Single Scenario| Coder
+    Analyst -->|Multiple Scenarios| Batch[Batch Processor]
+    
+    Batch -->|Parallel Gen| Coder
     Coder -->|Code| Reviewer
     Reviewer -->|Static Analysis| End
     
     End -->|Run Test| Executor[Docker Executor]
-    Executor -->|Fail| Debugger[Debugger Agent]
+    Executor -->|Failure Trace| Debugger
     Debugger -->|Fix Code| Executor
+    
+    Scheduler[Clock] -.->|Health Check| Executor
 ```
 
-## 🛠 Технологии
+## 🛠 Технологический Стек
 
-* **Backend:** Python 3.11, FastAPI, LangGraph, SQLAlchemy (Async), Playwright.
-* **Frontend:** React 18, Vite, Tailwind CSS, Monaco Editor, Zustand.
-* **AI:** Cloud.ru Evolution (Qwen 2.5/3 Coder).
-* **Infra:** Docker Compose.
+### Backend
+
+* **Core:** Python 3.11, FastAPI
+* **AI Orchestration:** LangGraph, LangChain
+* **Testing Engine:** Playwright, Pytest, Allure
+* **Data:** PostgreSQL (Async), ChromaDB (Vector Search)
+* **Parsers:** Python AST, JavaParser, Tree-Sitter
+
+### Frontend
+
+* **Framework:** React 19, Vite 7
+* **Styling:** Tailwind CSS v4 (Cloud.ru Console Theme)
+* **State:** Zustand 5 (Persisted)
+* **Editor:** Monaco Editor (VS Code core)
+* **Streaming:** Server-Sent Events (SSE)
+
+### Supported Models
+
+* **Primary:** Qwen 2.5/3 Coder (via Cloud.ru)
+* **Alternative:** GigaChat Max, T-Pro, MiniMax, OpenAI GPT-4o
 
 ## 🏃‍♂️ Быстрый старт
 
 1. **Настройка**
-    Создайте `backend/.env`:
+    Создайте файл `backend/.env`:
 
     ```ini
     CLOUD_RU_API_KEY=your_key
     CLOUD_RU_BASE_URL=https://foundation-models.api.cloud.ru/v1
-    MODEL_NAME=Qwen/Qwen2.5-Coder-32B-Instruct
+    MODEL_NAME=Qwen/Qwen3-Coder-480B-A35B-Instruct
     ```
 
 2. **Запуск**
@@ -84,6 +122,11 @@ graph TD
     ```
 
 3. **Использование**
-    * Откройте [http://localhost:3000](http://localhost:3000).
-    * В чате напишите: `Напиши тест для https://example.com`.
-    * Наслаждайтесь магией.
+    * Откройте **<http://localhost>** (порт 80).
+    * В чате напишите: `Напиши тест для https://example.com` или загрузите ZIP с кодом.
+
+## 🔄 Интеграции
+
+* **GitLab:** Экспорт готовых тестов в Merge Request.
+* **Allure:** Встроенный просмотр отчетов.
+* **Notification Center:** Уведомления об авто-починке тестов.

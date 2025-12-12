@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Smart ValidOps</title>
+    <title>TestOps Evolution Forge</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -47,6 +47,71 @@
       }
       ::-webkit-scrollbar-thumb:hover {
         background: #777; 
+      }
+
+      /* Print styles */
+      @media print {
+        body {
+          margin: 0;
+          padding: 0;
+          background-color: white; /* For print, a white background is better */
+          color: black; /* For print, black text is better */
+        }
+        
+        /* Define a custom page size for 16:9 aspect ratio */
+        /* This might need adjustment based on typical printer settings and PDF viewers */
+        @page {
+          size: A4 landscape; /* Start with A4 landscape */
+          margin: 0; /* Remove default margins */
+        }
+
+        .print-mode-container {
+          width: 100vw;
+          height: 100vh;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .print-slide-wrapper {
+          width: 100vw;
+          height: 100vh;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          page-break-after: always; /* Ensure each slide is on a new page */
+          box-sizing: border-box; /* Include padding/border in element's total width/height */
+        }
+
+        /* Scale content to fit 16:9 within the A4 landscape page */
+        /* A4 landscape is roughly 1.41:1. We need to fit 16:9 (1.77:1) inside it. */
+        /* So, we'll scale the SlideLayout to fit the height, and it will be wider than A4 */
+        /* Then, we'll center it. */
+        .print-slide-wrapper > div { /* Target the SlideLayout inside the wrapper */
+          width: 100vh; /* Set width based on viewport height */
+          height: calc(100vh / 16 * 9); /* Maintain 16:9 aspect ratio */
+          transform-origin: top left;
+          transform: scale(calc(16 / 9)); /* Scale to fit height, adjust width */
+          margin: auto; /* Center the scaled content */
+        }
+
+        /* Hide elements that shouldn't appear in print, if any remain */
+        .no-print {
+          display: none !important;
+        }
+
+         /* Specific adjustments for SlideLayout elements in print mode */
+         .print-slide-wrapper .absolute { /* Hide absolute positioning for print */
+            position: static !important;
+            transform: none !important;
+         }
+
+         .print-slide-wrapper .shadow-2xl {
+             box-shadow: none !important; /* Remove shadows in print */
+         }
+
+         .print-slide-wrapper .border-8 {
+             border: none !important; /* Remove main border */
+         }
       }
     </style>
 <link rel="stylesheet" href="/index.css">

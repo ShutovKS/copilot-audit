@@ -1,9 +1,12 @@
 import logging
 import os
+import platform
 import shutil
+from pathlib import Path
 
 import docker
 from docker.errors import APIError, BuildError, ImageNotFound, NotFound
+from docker.types import LogConfig
 
 from src.app.core.config import get_settings
 
@@ -17,9 +20,30 @@ class TestExecutorService:
 		self.settings.TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 		try:
-			# Set default DOCKER_HOST for macOS Docker Desktop if not set
+			# Set default DOCKER_HOST based on platform if not set
 			if not os.environ.get('DOCKER_HOST'):
-				os.environ['DOCKER_HOST'] = 'unix:///Users/shutovks/.docker/run/docker.sock'
+				system = platform.system()
+				if system == 'Darwin':  # macOS
+					possible_sockets = [
+						os.path.expanduser("~/.docker/run/docker.sock"),
+						"/var/run/docker.sock"
+					]
+					docker_host = None
+					for sock in possible_sockets:
+						if os.path.exists(sock):
+							docker_host = f'unix://{sock}'
+							break
+					if not docker_host:
+						logger.warning("⚠️ No Docker socket found on macOS. Please ensure Docker Desktop is running.")
+				elif system == 'Linux':
+					docker_host = 'unix:///var/run/docker.sock'
+				elif system == 'Windows':
+					docker_host = 'npipe:////./pipe/docker_engine'
+				else:
+					docker_host = None
+				if docker_host:
+					os.environ['DOCKER_HOST'] = docker_host
+					logger.info(f"🐳 Setting DOCKER_HOST to {docker_host}")
 			self.docker_client = docker.from_env()
 			logger.info("🐳 Docker client connected.")
 		except Exception as e:
@@ -48,6 +72,8 @@ class TestExecutorService:
 			logger.warning(f"Cleanup warning: {e}")
 
 	def _ensure_runner_image(self) -> bool:
+		if not self.docker_client:
+			return False
 		image_tag = "testops-runner:latest"
 		try:
 			self.docker_client.images.get(image_tag)
@@ -55,8 +81,10 @@ class TestExecutorService:
 		except ImageNotFound:
 			logger.info(f"⚙️ Runner image '{image_tag}' not found. Building...")
 			try:
+				build_path = Path("/app")  # In container, backend is mounted at /app
+				logger.info(f"Building runner image from path: {build_path}")
 				self.docker_client.images.build(
-					path=str(self.settings.BASE_DIR),
+					path=str(build_path),
 					dockerfile="Dockerfile.runner",
 					tag=image_tag,
 					rm=True
@@ -89,22 +117,27 @@ class TestExecutorService:
 
 		try:
 			test_file = run_dir_abs / f"test_{run_id}.py"
+			logger.info(f"📝 Writing test file to: {test_file}")
 			with open(test_file, "w", encoding="utf-8") as f:
 				f.write(code)
+			logger.info(f"✅ Test file written. Size: {test_file.stat().st_size} bytes")
 
-			with open(run_dir_abs / "pytest.ini", "w", encoding="utf-8") as f:
+			pytest_ini = run_dir_abs / "pytest.ini"
+			logger.info(f"📝 Writing pytest.ini to: {pytest_ini}")
+			with open(pytest_ini, "w", encoding="utf-8") as f:
 				f.write("""
 [pytest]
-addopts = --clean-alluredir --alluredir=/app/allure-results --screenshot on --video retain-on-failure --tracing on
+addopts = --clean-alluredir --alluredir=allure-results --screenshot on --video retain-on-failure --tracing on
 python_files = test_*.py
 filterwarnings =
     ignore::DeprecationWarning
                 """)
+			logger.info(f"✅ pytest.ini written. Size: {pytest_ini.stat().st_size} bytes")
 		except Exception as e:
 			logger.error(f"❌ IO Error preparing run files: {e}")
 			return False, f"IO Error: {e}", None
 
-		cmd = f"/bin/sh -c 'pytest test_{run_id}.py -v && allure generate /app/allure-results -o /app/report --clean'"
+		cmd = f"/bin/sh -c 'cd /host_temp/{run_id} && pytest test_{run_id}.py -v && allure generate allure-results -o report --clean'"
 
 		logs = ""
 		success = False
@@ -113,16 +146,22 @@ filterwarnings =
 		try:
 			logger.info(f"🐳 Starting container for run {run_id}...")
 
+			# For DinD: mount the shared volume at the run-specific subpath
+			volume_name = "copilot-audit_testops_temp"
+			container_path = f"{run_id}"
+			
 			container = self.docker_client.containers.run(
 				image="testops-runner:latest",
 				command=cmd,
-				volumes={str(run_dir_abs): {'bind': '/app', 'mode': 'rw'}},
-				working_dir="/app",
+				volumes={
+					f"{volume_name}": {'bind': f'/host_temp', 'mode': 'rw'}
+				},
+				working_dir=f"/host_temp/{container_path}",
 				environment={"HEADLESS": "true"},
 				shm_size="2g",
 				detach=True,
 				labels={"created_by": "testops-forge"},
-				log_config={'type': 'json-file'}
+				log_config=LogConfig(type='json-file')
 			)
 
 			result = container.wait()
@@ -150,7 +189,8 @@ filterwarnings =
 		report_url = None
 		if (run_dir_abs / "report").exists() and any((run_dir_abs / "report").iterdir()):
 			try:
-				shutil.copytree(run_dir_abs / "report", final_report_dir)
+				final_report_dir.mkdir(parents=True, exist_ok=True)
+				shutil.copytree(run_dir_abs / "report", final_report_dir, dirs_exist_ok=True)
 				report_url = f"/static/reports/{run_id}/index.html"
 				logger.info(f"📊 Report generated at {report_url}")
 			except Exception as e:

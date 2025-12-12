@@ -66,12 +66,13 @@ RUN playwright install chromium
 
 COPY src ./src
 COPY pyproject.toml .
+COPY Dockerfile.runner .
 
 RUN mkdir -p /app/static/reports /app/temp_execution \
     && useradd -m appuser \
     && chown -R appuser:appuser /app
 
-USER appuser
+# USER appuser
 
 EXPOSE 8000
 

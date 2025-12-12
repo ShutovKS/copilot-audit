@@ -23,6 +23,11 @@ services:
       - DATABASE_URL=postgresql+asyncpg://testops:testops@db:5432/testops
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - testops_temp:/app/temp_execution
+      - testops_reports:/app/static/reports
+    privileged: true
     depends_on:
       db:
         condition: service_healthy
@@ -73,3 +78,5 @@ networks:
 volumes:
   postgres_data:
   chroma_data:
+  testops_temp:
+  testops_reports:

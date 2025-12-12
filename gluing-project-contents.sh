@@ -19,15 +19,17 @@ EXCLUDE_PATTERNS=(
   ".*\.svg"
   ".*\.jpg"
   ".*\.lock"
+  ".*\.zip"
   ".*\.sqlite3"
 
   ".github/.*"
   ".husky/.*"
   ".idea/.*"
   "docs/.*"
-  #  "backend/.*"
-  #  "frontend/.*"
-  #  "^[^.\/][^/]*$|^\.[^/]*$" # Корневые файлы и скрытые файлы
+   "backend/.*"
+   "frontend/.*"
+  #  "presentation/.*"
+   "^[^.\/][^/]*$|^\.[^/]*$" # Корневые файлы и скрытые файлы
 
   "package-lock\.json"
   "yarn\.lock"

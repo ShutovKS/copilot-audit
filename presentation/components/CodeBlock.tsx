@@ -16,8 +16,8 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, className = "", fit = false
         <div className="w-3 h-3 rounded-full bg-green-500"></div>
       </div>
       
-      {/* Increased font size from text-[10px] to text-xs (12px) and adjusted leading */}
-      <pre className={`font-mono leading-snug text-gray-300 ${fit ? 'text-base whitespace-pre-wrap overflow-hidden h-full' : 'text-sm md:text-base overflow-x-auto'}`}>
+      {/* Reduced font size: text-base -> text-sm, text-sm -> text-xs */}
+      <pre className={`font-mono leading-snug text-gray-300 ${fit ? 'text-sm whitespace-pre-wrap overflow-hidden h-full' : 'text-xs md:text-sm overflow-x-auto'}`}>
         <code>{code.split('\n').map((line, i) => (
           <div key={i} className={fit ? "min-h-[1.1em]" : "min-h-[1.5em]"}>
             {/* Simple syntax simulation based on keywords */}
