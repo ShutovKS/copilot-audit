@@ -13,6 +13,7 @@ from sqlalchemy.future import select
 from src.app.core.config import get_settings
 from src.app.core.database import get_db
 from src.app.domain.models import TestRun
+from src.app.services.storage import storage_service
 from src.app.services.tools.trace_inspector import TraceInspector
 from src.app.tasks import run_test_task
 
@@ -46,11 +47,13 @@ async def run_test(
 	)
 	run = result.scalars().first()
 
-	if not run or not run.generated_code:
-		raise HTTPException(status_code=404, detail="Test run not found or no code generated")
+	if not run or not run.generated_code_path:
+		raise HTTPException(status_code=404, detail="Test run not found or no code generated.")
+
+	generated_code = storage_service.load(run.generated_code_path)
 
 	# Отправляем задачу в Celery
-	run_test_task.delay(run_id, run.generated_code)
+	run_test_task.delay(run_id, generated_code)
 
 	# Обновляем статус в БД
 	run.execution_status = "PENDING"
@@ -111,15 +114,18 @@ async def get_debug_context(
 	if not run:
 		raise HTTPException(status_code=404, detail="Test run not found")
 
+	execution_logs = ""
+	if run.execution_logs_path:
+		execution_logs = storage_service.load(run.execution_logs_path)
+
 	# Разрешаем запрос контекста, даже если статус не FAILURE (для дебага)
 	inspector = TraceInspector()
-	context = inspector.get_failure_context(run.id, run.execution_logs or "")
+	context = inspector.get_failure_context(run.id, execution_logs)
 
 	if not context:
-		# Если контекста нет, возвращаем пустую заглушку, чтобы фронт не падал
 		return DebugContextResponse(
 			summary="No trace data available.",
-			original_error=run.execution_logs or "No logs available.",
+			original_error=execution_logs or "No logs available.",
 			dom_snapshot="",
 			network_errors=[],
 			console_logs=[],

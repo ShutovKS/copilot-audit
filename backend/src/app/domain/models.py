@@ -13,12 +13,12 @@ class TestRun(Base):
 	user_request = Column(Text, nullable=False)
 	test_type = Column(String, nullable=True)
 	status = Column(String, default="PENDING")
-	generated_code = Column(Text, nullable=True)
-	test_plan = Column(Text, nullable=True)
+	generated_code_path = Column(Text, nullable=True)
+	test_plan_path = Column(Text, nullable=True)
 
 	execution_status = Column(String, nullable=True)
 	report_url = Column(String, nullable=True)
-	execution_logs = Column(Text, nullable=True)
+	execution_logs_path = Column(Text, nullable=True)
 	hypothesis = Column(Text, nullable=True)
 
 	created_at = Column(DateTime, default=datetime.utcnow)

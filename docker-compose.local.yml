@@ -1,4 +1,10 @@
+# В последних версиях не тестировался, но должен работать.
+# docker-compose.yml - основной файл, проверенный в работоспособности.
+
+version: '3.8'
+
 services:
+  # --- INFRASTRUCTURE ---
   db:
     image: postgres:15-alpine
     container_name: testops-forge-db
@@ -23,10 +29,67 @@ services:
     container_name: testops-forge-chroma
     ports:
       - "8001:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
     volumes:
       - chroma_data:/chroma/chroma
     networks:
       - forge-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: testops-forge-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - forge-network
+
+  docker:
+    image: docker:24-dind
+    container_name: testops-forge-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    ports:
+      - "2375:2375"
+    volumes:
+      - testops_dind_data:/var/lib/docker
+      - ./temp_execution:/app/temp_execution
+    healthcheck:
+      test: ["CMD", "docker", "ps"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    networks:
+      - forge-network
+
+  # --- OPTIONAL: Services in Dev Mode (Uncomment if needed) ---
+  # Если вы хотите запускать бэкенд в докере, но с hot-reload:
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: testops-forge-backend
+  #   command: uvicorn src.app.main:app --host 0.0.0.0 --port 8000 --reload
+  #   ports:
+  #     - "8000:8000"
+  #   env_file: ./backend/.env
+  #   environment:
+  #     - DOCKER_HOST=tcp://docker:2375
+  #     - DATABASE_URL=postgresql+asyncpg://testops:testops@db:5432/testops
+  #     - CHROMA_HOST=chromadb
+  #     - CELERY_BROKER_URL=redis://redis:6379/0
+  #     - CELERY_RESULT_BACKEND=redis://redis:6379/0
+  #   volumes:
+  #     - ./backend:/app # Hot Reload кода
+  #     - ./temp_execution:/app/temp_execution
+  #   depends_on: [db, chromadb, redis, docker]
+  #   networks: [forge-network]
 
 networks:
   forge-network:
@@ -35,3 +98,4 @@ networks:
 volumes:
   postgres_data:
   chroma_data:
+  testops_dind_data:

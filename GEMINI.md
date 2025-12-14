@@ -14,8 +14,8 @@ Your goal is to maintain, refactor, and expand an autonomous multi-agent system 
 **Your Core Philosophies:**
 
 1. **No Hallucinations:** We rely on "Active Vision" (WebInspector) and "White-Box Analysis" (AST), not guessing.
-2. **Resilience:** The system must handle failures gracefully using Self-Healing loops (`TraceInspector`).
-3. **Performance:** We use async/await everywhere and parallel batch processing for speed.
+2. **Human Control:** The AI plans, but the Human approves (`Human-in-the-Loop`).
+3. **Resilience:** The system must handle failures gracefully using Self-Healing loops (`TraceInspector`) and learn from them (`KnowledgeBase`).
 4. **Security:** Generated code is treated as untrusted; it runs in isolated containers and passes strict static analysis.
 
 ---
@@ -25,27 +25,34 @@ Your goal is to maintain, refactor, and expand an autonomous multi-agent system 
 ### Core Frameworks
 
 * **Backend:** Python 3.11, FastAPI (Async), LangGraph (State Orchestration), LangChain, Celery (Task Queuing).
-* **Frontend:** React 19, Vite 7, TypeScript 5.9, Tailwind CSS v4, Zustand 5.
-* **Database:** PostgreSQL (AsyncPG + SQLAlchemy 2.0) for history; ChromaDB for Vector RAG.
+* **Frontend:** React 19, Vite 7, TypeScript 5.9, Tailwind CSS v4, Zustand 5 (Persist).
+* **Database:** PostgreSQL (AsyncPG + SQLAlchemy 2.0) for history; ChromaDB for Vector RAG (Deduplication & Knowledge Base).
 * **Messaging:** Redis (Celery Broker, Real-time Log Streaming).
 * **Infrastructure:** Docker Compose, Docker-in-Docker (DinD) sidecar for isolated test execution.
 
 ### The Agentic Graph (`src/app/agents/graph.py`)
 
-The system creates a cyclic state graph for generating test code:
+The system creates a directed state graph with a human approval gate:
 
-1. **Router:** Classifies intent via lightweight LLM (UI/API/Debug/Analyze).
+1. **Router:** Classifies intent (UI/API/Debug/Analyze) using a lightweight LLM.
 2. **Analyst:**
-    * Uses **RAG** (ChromaDB) to check for duplicates.
+    * Uses **RAG** (ChromaDB) to recall "Lessons" from previous bugs (`KnowledgeBaseService`).
     * Uses **WebInspector** to fetch *Semantic DOM* (not raw HTML).
     * Uses **CodeAnalysisService** to parse git repos (AST/Regex).
-    * Splits complex tasks into **Batch Scenarios**.
-3. **Batch Node:** Executes multiple scenarios in parallel using `asyncio.gather`.
-4. **Coder:** Generates Python code (Pytest + Playwright) using `few-shot` prompting.
+    * Generates a `Test Plan`.
+3. **Human Gate (Approval):**
+    * **STOP:** The graph pauses execution here (`interrupt_before=["human_approval"]`).
+    * The user reviews/edits the plan via UI (`ApprovalModal`).
+    * Execution resumes only upon explicit API call (`/chat/approve`).
+4. **Routing Strategy:** Based on context, routes to:
+    * **Feature Coder:** Fast generation for isolated scripts.
+    * **Repo Explorer:** ReAct agent with tools (`read_file`, `search_code`) to navigate existing Git repos.
+    * **Batch Node:** Parallel execution for multi-scenario plans using `asyncio.gather`.
 5. **Reviewer:**
     * **Static Analysis:** AST checks, forbidden imports (`os`, `subprocess`).
-    * **Logic Check:** Validates Page Object Model consistency.
-6. **Debugger:** Activated on execution failure. Reads `trace.zip` context and patches code.
+    * **Locator Dry Run:** Verifies selectors exist on the live page via WebInspector *before* showing code to user.
+    * **Memory Commit:** If a test passes after fixing, saves the "Lesson" to ChromaDB (`qa_insights`).
+6. **Debugger:** Activated on validation/execution failure. Reads `trace.zip` context and patches code.
 
 ---
 
@@ -54,23 +61,25 @@ The system creates a cyclic state graph for generating test code:
 ```text
 /backend
   /src/app
-    /agents          # LangGraph Nodes, Graph definition, and System Prompts
-    /api             # FastAPI routers. KEY: `chat.py` & `execution.py` handle SSE streams.
-    /core            # Database setup, Config, Celery App (`celery_app.py`), Redis (`redis.py`)
-    /domain          # Pydantic models (DTOs) and SQLAlchemy models (DB)
+    /agents          # LangGraph Nodes, Graph definition, Prompts
+    /api             # FastAPI routers. KEY: `chat.py` (SSE), `execution.py`, `gitlab.py`
+    /core            # Config, Database, Celery App, Redis
+    /domain          # Pydantic models (DTOs) and SQLAlchemy models
     /services
       /code_analysis # AST parsers (JavaAST, PythonAST, NodeJSParser)
-      /parsers       # OpenAPI/Swagger parsers
-      /tools         # WebInspector (Playwright), Linter (AST/Ruff), TraceInspector
-      /executor.py   # Docker orchestration (TestExecutorService)
-      /scheduler.py  # APScheduler for Health Checks & Auto-Fix
-    /tasks.py        # Celery background tasks (e.g., `run_test_task`)
+      /gitlab.py     # GitLab Merge Request integration
+      /history.py    # Run persistence
+      /memory.py     # Long-term memory (KnowledgeBaseService)
+      /tools         # WebInspector, TraceInspector, CodebaseNavigator, StaticAnalyzer
+      /executor.py   # Docker orchestration (DinD + Playwright Server)
+      /scheduler.py  # Health Checks & Auto-Fix triggers
+    /tasks.py        # Celery background tasks
 /frontend
   /src
-    /entities/store.ts # Global State (Zustand) + SSE Stream Handling Logic
-    /widgets           # Feature-rich components (Terminal, Monaco Editor, Sidebar)
+    /entities/store.ts # Global State (Zustand) + SSE Stream Processing
+    /widgets           # Terminal, Editor (Monaco), Sidebar, ApprovalModal
     /pages             # Workspace Layout
-    /shared            # API Clients and Utilities
+    /shared            # API Clients
 ```
 
 ---
@@ -80,17 +89,17 @@ The system creates a cyclic state graph for generating test code:
 ### Python (Backend)
 
 * **Async First:** All I/O (DB, Docker, Network, LLM) must be `async`.
-* **Typed State:** Strictly adhere to `AgentState` (`src/app/domain/state.py`). Do not pass loose dictionaries between graph nodes.
-* **Service Pattern:** Logic belongs in `src/app/services/`, not in API routers.
-* **Safety:** Never allow the `Coder` agent to import `os`, `sys`, or `subprocess`. The `CodeValidator` must enforce this.
-* **Logging:** Use `logger.info` for flow and `logger.error(..., exc_info=True)` for exceptions.
+* **Typed State:** Strictly adhere to `AgentState` (`src/app/domain/state.py`).
+* **Service Pattern:** Logic belongs in `src/app/services/`. API endpoints should only handle routing and DTO conversion.
+* **Safety:** Never allow the `Coder` to import `os`, `sys`, or `subprocess`. The `StaticCodeAnalyzer` must enforce this.
+* **Observability:** Use `logger.info` for user-facing logs (streamed to UI) and `logger.error` for system issues.
 
 ### TypeScript (Frontend)
 
-* **Tailwind v4:** Use the custom color palette (`#131418` bg, `#00b67a` primary). No config file needed for standard utilities.
-* **State Management:** Zustand is the single source of truth. Persist session data to LocalStorage.
-* **Streaming (SSE):** Handle `text/event-stream` manually in `store.ts` using `ReadableStream`. Handle `type: 'code'`, `type: 'log'`, `type: 'plan'`.
-* **Polyfills:** Ensure `crypto.randomUUID` is polyfilled for non-secure contexts (HTTP) in `polyfills.ts`.
+* **Tailwind v4:** Use CSS variables for theming (`#131418` bg, `#00b67a` primary). No `tailwind.config.js` theme extensions needed usually.
+* **State Management:** Zustand is the SSOT. Handle session persistence via middleware.
+* **Streaming (SSE):** Parse `text/event-stream` manually in `ChatStreamService`. Handle types: `meta`, `log`, `code`, `plan`, `status`.
+* **Components:** Use `lucide-react` for icons. Use `@monaco-editor/react` for code.
 
 ---
 
@@ -100,13 +109,13 @@ The system creates a cyclic state graph for generating test code:
 
 The system uses Celery and Redis to execute tests asynchronously and provide real-time feedback.
 
-1.  **Task Queuing:** The API (`endpoints/execution.py`) receives a request to run a test. It immediately creates a task and places it onto a Celery queue (managed by Redis), then returns a "queued" status to the user.
-2.  **Background Execution:** A dedicated `worker` service, running in its own Docker container, listens for tasks on the queue.
-3.  **Log Streaming:**
-    *   As the `worker` executes the test via `TestExecutorService`, it publishes log messages to a unique Redis Pub/Sub channel for that specific run (`run:{run_id}:logs`).
-    *   Simultaneously, the frontend establishes a Server-Sent Events (SSE) connection to the `/execution/{run_id}/logs` endpoint on the `backend` API.
-    *   The `backend` subscribes to the Redis channel and streams incoming log messages directly to the frontend over the SSE connection.
-    *   A final `---EOF---` message signals the end of the stream.
+1. **Task Queuing:** The API (`endpoints/execution.py`) receives a request to run a test. It immediately creates a task and places it onto a Celery queue (managed by Redis), then returns a "queued" status to the user.
+2. **Background Execution:** A dedicated `worker` service, running in its own Docker container, listens for tasks on the queue.
+3. **Log Streaming:**
+    * As the `worker` executes the test via `TestExecutorService`, it publishes log messages to a unique Redis Pub/Sub channel for that specific run (`run:{run_id}:logs`).
+    * Simultaneously, the frontend establishes a Server-Sent Events (SSE) connection to the `/execution/{run_id}/logs` endpoint on the `backend` API.
+    * The `backend` subscribes to the Redis channel and streams incoming log messages directly to the frontend over the SSE connection.
+    * A final `---EOF---` message signals the end of the stream.
 
 This architecture ensures the UI remains responsive and provides immediate, real-time feedback during long-running test executions.
 
@@ -118,14 +127,14 @@ This architecture ensures the UI remains responsive and provides immediate, real
 
 ### Self-Healing Logic
 
-1. **Trigger:** `execution_status == 'FAILURE'`.
-2. **Data Source:** `TraceInspector` unzips the Playwright trace.
+1. **Trigger:** `scheduler.py` runs health checks every 6h OR user clicks "Auto-Fix".
+2. **Data Source:** `TraceInspector` unzips the Playwright trace (`trace.zip`).
 3. **Prompting:** The `Debugger` agent receives a prompt containing:
     * Original Error Log.
     * DOM Snapshot at failure time.
     * Network 500/403 errors.
     * Console Logs.
-4. **Output:** A revised Python file with a `# HYPOTHESIS:` comment explaining the fix.
+4. **Learning:** If `Reviewer` approves the fix, a compact lesson is extracted and saved to `KnowledgeBaseService` (ChromaDB).
 
 ### White-Box Analysis
 

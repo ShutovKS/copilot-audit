@@ -118,5 +118,10 @@ async def chat_reset(x_session_id: str = Header(..., alias="X-Session-ID")):
 		shutil.rmtree(reports_dir_path)
 		logger.info(f"🧹 Removed reports dir: {reports_dir_path}")
 
+	storage_path = settings.STORAGE_PATH
+	if storage_path.exists() and storage_path.is_dir():
+		shutil.rmtree(storage_path)
+		logger.info(f"🧹 Removed storage dir: {storage_path}")
+
 	return {"status": "ok"}
 

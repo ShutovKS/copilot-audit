@@ -11,18 +11,16 @@ from src.app.core.config import get_settings
 from src.app.domain.models import TestRun
 from src.app.domain.enums import ExecutionStatus
 from src.app.services.executor import TestExecutorService
+from src.app.services.storage import storage_service
 
 
 logger = logging.getLogger(__name__)
 
-async def _run_task_logic(run_id: int, code: str):
+async def _run_task_logic(run_id: int, generated_code_path: str):
     """
     Fully isolated async logic that manages its own resources.
     """
 
-    
-    # Database operations
-    # The engine and SessionLocal will be initialized globally once per worker process.
     settings = get_settings()
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSessionLocal = sessionmaker(
@@ -49,16 +47,24 @@ async def _run_task_logic(run_id: int, code: str):
                 run.execution_status = ExecutionStatus.RUNNING
                 await session.commit()
 
+        # Load the code from the path
+        code = storage_service.load(generated_code_path)
+
         # --- EXECUTE (Blocking Docker call wrapped in executor) ---
-        # executor.execute_test internally uses run_in_executor to avoid blocking this loop
-        success, logs, report_url = await executor.execute_test(run_id, code)
+        success, raw_logs, report_url = await executor.execute_test(run_id, code)
         
         # Publish Logs to Redis (Chunked if too large)
-        if logs:
+        if raw_logs:
+            # Save raw logs to file
+            execution_logs_path = storage_service.save(raw_logs, run_id, "log")
+
             # Send logs in chunks to avoid Redis message size limits
-            chunk_size = 4000
-            for i in range(0, len(logs), chunk_size):
-                await redis_client.publish(log_channel, logs[i:i+chunk_size])
+            # Only send a summary or relevant parts to Redis, not the entire raw_logs
+            summary_logs = raw_logs[:1000] + ("\n... (truncated)" if len(raw_logs) > 1000 else "")
+            await redis_client.publish(log_channel, summary_logs)
+        else:
+            execution_logs_path = None
+
 
         # --- FINISH ---
         final_status = ExecutionStatus.SUCCESS if success else ExecutionStatus.FAILURE
@@ -70,7 +76,7 @@ async def _run_task_logic(run_id: int, code: str):
             run = result.scalars().first()
             if run:
                 run.execution_status = final_status
-                run.execution_logs = logs
+                run.execution_logs_path = execution_logs_path
                 run.report_url = report_url
                 await session.commit()
 
@@ -78,6 +84,7 @@ async def _run_task_logic(run_id: int, code: str):
 
     except Exception as e:
         logger.error(f"Task failed: {e}", exc_info=True)
+        error_log_path = storage_service.save(str(e), run_id, "log")
         await redis_client.publish(log_channel, f"Error: {str(e)}")
         # Update DB error
         async with AsyncSessionLocal() as session:
@@ -85,7 +92,7 @@ async def _run_task_logic(run_id: int, code: str):
             run = result.scalars().first()
             if run:
                 run.execution_status = ExecutionStatus.FAILURE
-                run.execution_logs = str(e)
+                run.execution_logs_path = error_log_path
                 await session.commit()
         raise e
     finally:
@@ -96,6 +103,6 @@ async def _run_task_logic(run_id: int, code: str):
 
 
 @celery_app.task(bind=True)
-def run_test_task(self, run_id: int, code: str):
+def run_test_task(self, run_id: int, generated_code_path: str):
     # Creates a fresh event loop for this task execution
-    return asyncio.run(_run_task_logic(run_id, code))
+    return asyncio.run(_run_task_logic(run_id, generated_code_path))

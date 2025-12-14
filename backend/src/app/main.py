@@ -17,11 +17,12 @@ from src.app.core.config import get_settings
 from src.app.core.database import AsyncSessionLocal
 from src.app.services.executor import TestExecutorService
 from src.app.services.scheduler import SchedulerService
+from src.app.services.tools.browser import BrowserManager
 
 logging.basicConfig(
-	level=logging.INFO,
-	format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-	handlers=[logging.StreamHandler(sys.stdout)]
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 logger = logging.getLogger(__name__)
@@ -30,98 +31,89 @@ scheduler_service = SchedulerService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-	settings = get_settings()
-	logger.info(f"Starting {settings.PROJECT_NAME}...")
+    settings = get_settings()
+    logger.info(f"Starting {settings.PROJECT_NAME}...")
 
-	settings.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-	settings.TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    settings.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    settings.TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-	try:
-		executor = TestExecutorService()
-		executor.cleanup_all()
-		logger.info("Startup cleanup completed.")
-	except Exception as e:
-		logger.warning(f"Startup cleanup failed (Docker might be down): {e}")
+    try:
+        executor = TestExecutorService()
+        executor.cleanup_all()
+        logger.info("Startup cleanup completed.")
+    except Exception as e:
+        logger.warning(f"Startup cleanup failed (Docker might be down): {e}")
 
-	await bootstrap_application(app)
+    await bootstrap_application(app)
 
-	# Start the scheduler and pass it the compiled agent graph
-	scheduler_service.start(app.state.agent_graph)
+    # Start the scheduler and pass it the compiled agent graph
+    scheduler_service.start(app.state.agent_graph)
 
-	try:
-		async with AsyncSessionLocal() as session:
-			await session.execute(text("""
-                                 CREATE TABLE IF NOT EXISTS notifications
-                                 (
-                                     id
-                                     SERIAL
-                                     PRIMARY
-                                     KEY,
-                                     session_id
-                                     VARCHAR
-                                     NOT
-                                     NULL,
-                                     message
-                                     TEXT
-                                     NOT
-                                     NULL,
-                                     related_run_id
-                                     INTEGER
-                                     REFERENCES
-                                     test_runs
-                                 (
-                                     id
-                                 ),
-                                     is_read BOOLEAN NOT NULL DEFAULT false,
-                                     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT
-                                 (
-                                     now
-                                 (
-                                 ) at time zone 'utc')
-                                     );
-																 """))
-			await session.execute(text("""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='execution_status') THEN
-                        ALTER TABLE test_runs ADD COLUMN execution_status VARCHAR;
-                    END IF;
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='report_url') THEN
-                        ALTER TABLE test_runs ADD COLUMN report_url VARCHAR;
-                    END IF;
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='execution_logs') THEN
-                        ALTER TABLE test_runs ADD COLUMN execution_logs TEXT;
-                    END IF;
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='test_plan') THEN
-                        ALTER TABLE test_runs ADD COLUMN test_plan TEXT;
-                    END IF;
-                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='hypothesis') THEN
-                        ALTER TABLE test_runs ADD COLUMN hypothesis TEXT;
-                    END IF;
-                END $$;
-            """))
-			await session.commit()
-	except Exception as e:
-		logger.warning(f"Migration step warning: {e}")
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text(
+"""
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY, 
+  session_id VARCHAR NOT NULL, 
+  message TEXT NOT NULL, 
+  related_run_id INTEGER REFERENCES test_runs (id), 
+  is_read BOOLEAN NOT NULL DEFAULT false, 
+  created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (
+    now () at time zone 'utc'
+  )
+);
+"""
+                )
+            )
+            await session.execute(
+                text(
+"""
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='execution_status') THEN
+        ALTER TABLE test_runs ADD COLUMN execution_status VARCHAR;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='report_url') THEN
+        ALTER TABLE test_runs ADD COLUMN report_url VARCHAR;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='execution_logs') THEN
+        ALTER TABLE test_runs ADD COLUMN execution_logs TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='test_plan') THEN
+        ALTER TABLE test_runs ADD COLUMN test_plan TEXT;
+    END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='test_runs' AND column_name='hypothesis') THEN
+        ALTER TABLE test_runs ADD COLUMN hypothesis TEXT;
+    END IF;
+END $$;
+"""
+                )
+            )
+            await session.commit()
+    except Exception as e:
+        logger.warning(f"Migration step warning: {e}")
 
-	yield
+    yield
 
-	logger.info("Shutting down...")
+    logger.info("Shutting down...")
 
-	# Shutdown the scheduler
-	scheduler_service.shutdown()
+    # Shutdown the scheduler
+    scheduler_service.shutdown()
+    await BrowserManager.close_browser()
 
-	try:
-		executor = TestExecutorService()
-		executor.cleanup_all()
-	except Exception:
-		pass
+    try:
+        executor = TestExecutorService()
+        executor.cleanup_all()
+    except Exception:
+        pass
 
-	await shutdown_application(app)
+    await shutdown_application(app)
 
 
 app = FastAPI(
-	title="TestOps Evolution Forge API",
+    title="TestOps Evolution Forge API",
 	version="1.4.0",
 	default_response_class=ORJSONResponse,
 	lifespan=lifespan,

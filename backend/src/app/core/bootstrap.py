@@ -20,7 +20,11 @@ async def preload_models(app):
     """
     try:
         logger.info("Pre-loading all-MiniLM-L6-v2 embedding model...")
-        app.state.embedding_function = embedding_functions.DefaultEmbeddingFunction()
+        embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+        # By calling the function on a sample text, we force the model to be
+        # downloaded and cached at this moment.
+        embedding_fn(["Pre-load test"])
+        app.state.embedding_function = embedding_fn
         logger.info("✅ Embedding model is ready.")
     except Exception as e:
         logger.error(f"Failed to preload embedding model: {e}", exc_info=True)

@@ -26,16 +26,17 @@ EXCLUDE_PATTERNS=(
   ".husky/.*"
   ".idea/.*"
   "docs/.*"
-  #  "backend/.*"
-  #  "frontend/.*"
-   "presentation/.*"
-  #  "^[^.\/][^/]*$|^\.[^/]*$" # Корневые файлы и скрытые файлы
+  "backend/.*"
+  "frontend/.*"
+  # "presentation/.*"
+  "^[^.\/][^/]*$|^\.[^/]*$"
 
   "package-lock\.json"
   "yarn\.lock"
   "pnpm-lock.yaml"
   "gluing-project-contents.sh"
   "openapi.yaml"
+  ".gemini/.*"
   ".coverage"
 )
 

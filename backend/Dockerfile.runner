@@ -20,7 +20,9 @@ RUN wget -q https://github.com/allure-framework/allure2/releases/download/2.27.0
     && ln -s /opt/allure-2.27.0/bin/allure /usr/bin/allure \
     && rm allure-2.27.0.zip
 
-RUN pip install --no-cache-dir pytest pytest-playwright allure-pytest requests pydantic
+RUN pip install --no-cache-dir --upgrade pip
+
+RUN pip install --no-cache-dir --verbose pytest pytest-playwright allure-pytest requests pydantic
 
 RUN playwright install chromium --with-deps
 

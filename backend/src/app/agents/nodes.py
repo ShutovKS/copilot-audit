@@ -22,6 +22,7 @@ from src.app.services.defects import DefectAnalysisService
 from src.app.services.llm_factory import CloudRuLLMService
 from src.app.services.memory import KnowledgeBaseService
 from src.app.services.parsers.openapi import OpenAPIParser
+from src.app.services.storage import storage_service
 from src.app.services.tools.browser import WebInspector
 from src.app.services.tools.codebase_navigator import CodebaseNavigator
 from src.app.services.tools.trace_inspector import TraceInspector
@@ -48,9 +49,14 @@ async def human_approval_node(state: AgentState) -> dict[str, Any]:
 	interrupting reviewer retry loops or debug flows.
 	"""
 	# Keep this node minimal to avoid accidentally overwriting state.
+	log_path = storage_service.save(
+		"System: Human approval received. Continuing to code generation...",
+		run_id=state["run_id"],
+		extension="log"
+	)
 	return {
 		"status": ProcessingStatus.GENERATING,
-		"logs": ["System: Human approval received. Continuing to code generation..."]
+		"log_path": log_path,
 	}
 
 
@@ -124,17 +130,20 @@ async def analyst_node(state: AgentState, embedding_function=None) -> dict[str, 
 	llm = llm_service.get_model(state.get("model_name"))
 	raw_input = state['user_request']
 	request_url = _extract_first_url(raw_input)
+	run_id = state.get("run_id", "unknown_run")
+	logs = []
 
 	dedup_service = DeduplicationService(embedding_function)
 	memory_service = KnowledgeBaseService(embedding_function)
 
-	# 0. Auto-Fix Check (This is now handled by the router, but we keep it as a fallback)
+	# 0. Auto-Fix Check
 	if "[AUTO-FIX]" in raw_input:
 		logger.info("🔧 [Analyst] Detected Auto-Fix request. Redirecting to Debugger.")
+		log_path = storage_service.save("System: Detected Auto-Fix request. Handing over to Debugger.", run_id, "log")
 		return {
 			"status": ProcessingStatus.FIXING,
 			"scenarios": [],
-			"logs": ["System: Detected Auto-Fix request. Handing over to Debugger."]
+			"log_path": log_path,
 		}
 
 	# 1. RAG & Defects
@@ -144,10 +153,10 @@ async def analyst_node(state: AgentState, embedding_function=None) -> dict[str, 
 		memory_context = memory_service.recall_lessons(raw_input, url=request_url)
 		if memory_context:
 			logger.info("🧠 [Analyst] Found relevant lessons in long-term memory.")
+			logs.append("Analyst: Injected long-term memory insights into context.")
 	except Exception as e:
 		logger.warning(f"⚠️ [Analyst] Memory recall failed (non-fatal): {e}")
 
-	# Bypass cache for follow-up messages to allow for interactive fixes
 	is_follow_up = len(state.get("messages", [])) > 1
 	if is_follow_up:
 		logger.info("💬 [Analyst] Follow-up message detected. Bypassing RAG cache.")
@@ -157,8 +166,16 @@ async def analyst_node(state: AgentState, embedding_function=None) -> dict[str, 
 
 	if cached_code:
 		logger.info("✅ [Analyst] Found exact match in RAG. Skipping generation.")
-		return {"generated_code": cached_code, "status": ProcessingStatus.COMPLETED,
-						"logs": ["Analyst: Found exact match in knowledge base.", "System: Retrieved verified code."]}
+		log_path = storage_service.save(
+			"Analyst: Found exact match in knowledge base.\nSystem: Retrieved verified code.",
+			run_id, "log"
+		)
+		code_path = storage_service.save(cached_code, run_id, "py")
+		return {
+			"generated_code_path": code_path,
+			"status": ProcessingStatus.COMPLETED,
+			"log_path": log_path,
+		}
 
 	# 2. Context Parsing
 	parsed_context = ""
@@ -177,7 +194,6 @@ async def analyst_node(state: AgentState, embedding_function=None) -> dict[str, 
 			logger.info("✅ [Analyst] Cloned repo and generated file tree.")
 		except Exception as e:
 			logger.error(f"❌ [Analyst] Failed to process git repository: {e}")
-			# Fallback to just using the URL
 			parsed_context = raw_input
 	elif "http" in raw_input and "api" in raw_input.lower():
 		logger.info("🔍 [Analyst] Parsing OpenAPI spec from URL in request.")
@@ -185,60 +201,42 @@ async def analyst_node(state: AgentState, embedding_function=None) -> dict[str, 
 	else:
 		parsed_context = raw_input
 
-	# 3. Web Inspector (for UI tests not related to git repos)
+	# 3. Web Inspector
 	url_match = re.search(r'https?://[^\s]+', raw_input)
-	inspection_logs = []
 	vision_context = ""
-
 	if url_match and not git_url_match and "api" not in raw_input.lower():
 		url = url_match.group(0)
 		logger.info(f"🌍 [Analyst] Detected URL: {url}. Starting WebInspector...")
-		inspection_logs.append(f"Analyst: Detected URL {url}. Inspecting page structure...")
+		logs.append(f"Analyst: Detected URL {url}. Inspecting page structure...")
 		try:
 			dom_tree = await web_inspector.inspect_page(url)
 			vision_context = f"\n\n[REAL PAGE DOM STRUCTURE ({url})]:\n{dom_tree}\n\n[INSTRUCTION]: USE THESE EXACT ATTRIBUTES (id, class, testid) FOR LOCATORS."
 			logger.info(f"👁️ [Analyst] DOM Tree extracted ({len(dom_tree)} chars).")
-			inspection_logs.append("Analyst: Page inspection complete. DOM context acquired.")
+			logs.append("Analyst: Page inspection complete. DOM context acquired.")
 		except Exception as e:
 			logger.error(f"❌ [Analyst] WebInspector failed: {e}")
-			inspection_logs.append(f"Analyst: Inspection failed: {e}")
+			logs.append(f"Analyst: Inspection failed: {e}")
 
-	# 4. LLM Call with Fallback
+	# 4. LLM Call
 	logger.info("🧠 [Analyst] Generating Test Plan...")
-
-	# This is the list of messages we will send to the LLM
-	messages_for_llm = []
-
-	# The system prompt should always be first.
-	messages_for_llm.append(SystemMessage(content=ANALYST_SYSTEM_PROMPT))
-
-	# The first user message is special; it contains the core request.
-	# We will transform it into a message with all the rich context we parsed.
-	first_user_message_content = state["user_request"]  # This was set by chat.py
-	rich_context_content = (
-		f"Original Request: '{first_user_message_content}'\n\n"
-		f"Supporting Context:\n{parsed_context}{defects_context}{memory_context}{vision_context}"
-	)
-	messages_for_llm.append(HumanMessage(content=rich_context_content))
-
-	# Now, append the rest of the conversation, which includes the AI's questions and the user's subsequent answers.
-	# The full history is in `state["messages"]`. The first message in this list is the original user request.
-	# We have already processed it, so we skip it.
-	if len(state["messages"]) > 1:
-		messages_for_llm.extend(state["messages"][1:])
-
+	messages_for_llm = [
+		SystemMessage(content=ANALYST_SYSTEM_PROMPT),
+		HumanMessage(content=(
+			f"Original Request: '{state['user_request']}'\n\n"
+			f"Supporting Context:\n{parsed_context}{defects_context}{memory_context}{vision_context}"
+		)),
+		*(state["messages"][1:] if len(state.get("messages", [])) > 1 else [])
+	]
 
 	try:
 		response = await llm.ainvoke(messages_for_llm)
 	except Exception as e:
-		logger.error(f"❌ [Analyst] LLM Call Failed with Vision Context: {e}. Retrying WITHOUT vision context...")
-		inspection_logs.append("Analyst: LLM crashed on DOM data. Retrying in blind mode...")
-		# Remove vision_context for the retry
-		rich_context_content = (
-			f"Original Request: '{first_user_message_content}'\n\n"
+		logger.error(f"❌ [Analyst] LLM Call Failed: {e}. Retrying WITHOUT vision context...")
+		logs.append("Analyst: LLM crashed on DOM data. Retrying in blind mode...")
+		messages_for_llm[1] = HumanMessage(content=(
+			f"Original Request: '{state['user_request']}'\n\n"
 			f"Supporting Context:\n{parsed_context}{defects_context}{memory_context}"
-		)
-		messages_for_llm[1] = HumanMessage(content=rich_context_content) # Update the human message
+		))
 		try:
 			response = await llm.ainvoke(messages_for_llm)
 		except Exception as e2:
@@ -247,52 +245,44 @@ async def analyst_node(state: AgentState, embedding_function=None) -> dict[str, 
 
 	plan = response.content
 
-	# NEW: Check for empty or whitespace-only plan
 	if not plan or not plan.strip():
-		logger.warning("⚠️ [Analyst] LLM returned an empty plan. Asking for clarification.")
-		question = "I wasn't able to generate a test plan from the provided context. Could you please clarify the task or provide more details about what needs to be tested?"
+		question = "I wasn't able to generate a test plan. Could you please clarify the task?"
+		log_path = storage_service.save("Analyst: LLM returned empty plan, asking for clarification.", run_id, "log")
 		return {
 			"messages": [AIMessage(content=question)],
 			"status": ProcessingStatus.WAITING_FOR_INPUT,
-			"logs": ["Analyst: The LLM failed to generate a plan, asking for user clarification."]
+			"log_path": log_path
 		}
 
-	# AMBIGUITY CHECK
 	if plan.strip().startswith("[CLARIFICATION]"):
-		logger.info("⚠️ [Analyst] Ambiguous request. Asking for user clarification.")
 		question = plan.replace("[CLARIFICATION]", "").strip()
+		log_path = storage_service.save("Analyst: Ambiguous request, asking for clarification.", run_id, "log")
 		return {
 			"messages": [AIMessage(content=question)],
 			"status": ProcessingStatus.WAITING_FOR_INPUT,
-			"logs": ["Analyst: The request is ambiguous, asking for user clarification."]
+			"log_path": log_path,
 		}
 
 	t_type = TestType.API if "api" in raw_input.lower() or git_url_match else TestType.UI
+	scenarios = [s.strip() for s in plan.split("### SCENARIO:")[1:] if s.strip()]
+	logger.info(f"📝 [Analyst] Plan created. Scenarios: {len(scenarios) if scenarios else 1}.")
 
-	scenarios = []
-	scenario_marker = "### SCENARIO:"
-	# IMPORTANT: treat as multi-scenario only if there are 2+ scenario blocks.
-	# A single marker is often used as a header/template and must NOT force batch mode.
-	if plan.count(scenario_marker) >= 2:
-		raw_scenarios = plan.split(scenario_marker)[1:]
-		scenarios = [s.strip() for s in raw_scenarios if s.strip()]
+	logs.append(f"Analyst: Plan created. Identified {len(scenarios) if scenarios else 1} scenario(s). Type: {t_type}.")
+	logs.append("System: Waiting for human approval of the test plan...")
 
-	logger.info(f"📝 [Analyst] Plan created. Scenarios detected: {len(scenarios) if len(scenarios) > 1 else 1}.")
+	# Save artifacts
+	log_path = storage_service.save("\n".join(logs), run_id, "log")
+	plan_path = storage_service.save(plan, run_id, "md")
+	context_path = storage_service.save(parsed_context + vision_context, run_id, "txt")
 
 	return {
 		"repo_path": str(repo_path) if repo_path else None,
-		"test_plan": [str(plan)],
-		"technical_context": parsed_context + vision_context,
+		"test_plan_path": plan_path,
+		"technical_context_path": context_path,
 		"scenarios": scenarios if len(scenarios) > 1 else None,
 		"test_type": t_type,
-		# HITL: stop after we have a plan and wait for explicit human approval.
 		"status": ProcessingStatus.WAITING_FOR_APPROVAL,
-		"logs": [
-			f"Analyst: Plan created. Identified {len(scenarios) if len(scenarios) > 1 else 1} scenario(s). Type: {t_type}.",
-			*( ["Analyst: Injected long-term memory insights into context."] if memory_context else [] ),
-			*inspection_logs,
-			"System: Waiting for human approval of the test plan..."
-		],
+		"log_path": log_path,
 		"attempts": 0
 	}
 
@@ -301,8 +291,11 @@ async def feature_coder_node(state: AgentState) -> dict[str, Any]:
 	"""Generates code based on a plan, without repository interaction."""
 	logger.info("💻 [Coder] Simple generation mode activated.")
 	llm = llm_service.get_model(state.get("model_name"))
-	plan_str = "\n".join(state["test_plan"])
-	tech_context = state.get("technical_context", "")
+	run_id = state.get("run_id", "unknown_run")
+
+	plan_str = storage_service.load(state["test_plan_path"]) if state.get("test_plan_path") else ""
+	tech_context = storage_service.load(state["technical_context_path"]) if state.get("technical_context_path") else ""
+
 	messages = [
 		SystemMessage(content=CODER_SYSTEM_PROMPT),
 		HumanMessage(content=f"Technical Context:\n{tech_context}\n\nTest Plan:\n{plan_str}\n\nGenerate the full Python code now.")
@@ -314,17 +307,20 @@ async def feature_coder_node(state: AgentState) -> dict[str, Any]:
 		code = response.content.replace("```python", "").replace("```", "").strip()
 		logger.info(f"✅ [Coder] Code generated ({len(code)} chars).")
 
+		code_path = storage_service.save(code, run_id, "py")
+		log_path = storage_service.save(log_msg, run_id, "log")
+
 		return {
-			"generated_code": code,
+			"generated_code_path": code_path,
 			"validation_error": None,
 			"status": ProcessingStatus.VALIDATING,
 			"attempts": state.get("attempts", 0) + 1,
-			"logs": [log_msg],
+			"log_path": log_path,
 		}
 	except Exception as e:
 		logger.error(f"❌ [Coder] LLM Generation Failed: {e}", exc_info=True)
-		return {"status": ProcessingStatus.FAILED,
-						"logs": [f"Coder: Critical LLM Error. The AI Provider returned an error: {str(e)}"]}
+		log_path = storage_service.save(f"Coder: Critical LLM Error. The AI Provider returned an error: {str(e)}", run_id, "log")
+		return {"status": ProcessingStatus.FAILED, "log_path": log_path}
 
 
 async def repo_explorer_node(state: AgentState) -> dict[str, Any]:
@@ -333,6 +329,8 @@ async def repo_explorer_node(state: AgentState) -> dict[str, Any]:
 	llm = llm_service.get_model(state.get("model_name"))
 	repo_path_str = state.get("repo_path")
 	repo_path = Path(repo_path_str)
+	run_id = state.get("run_id", "unknown_run")
+	logs = []
 
 	@tool
 	async def read_file(file_path: str) -> str:
@@ -347,8 +345,8 @@ async def repo_explorer_node(state: AgentState) -> dict[str, Any]:
 
 	llm_with_tools = llm.bind_tools([read_file, search_code])
 
-	plan_str = "\n".join(state["test_plan"])
-	tech_context = state.get("technical_context", "")
+	plan_str = storage_service.load(state["test_plan_path"]) if state.get("test_plan_path") else ""
+	tech_context = storage_service.load(state["technical_context_path"]) if state.get("technical_context_path") else ""
 
 	messages = [
 		SystemMessage(content=CODER_SYSTEM_PROMPT),
@@ -359,13 +357,16 @@ async def repo_explorer_node(state: AgentState) -> dict[str, Any]:
 	max_iterations = 7
 	for i in range(max_iterations):
 		logger.info(f"🔄 [Coder/Explorer] ReAct Iteration {i + 1}/{max_iterations}")
-		response = await llm_with_tools.ainvoke(messages)
+		response = await llm.ainvoke(messages) # Changed to llm.ainvoke from llm_with_tools.ainvoke for direct tool calls
 
 		if not response.tool_calls:
 			logger.info("✅ [Coder/Explorer] LLM provided final code. Exiting ReAct loop.")
 			code = response.content.replace("```python", "").replace("```", "").strip()
-			return {"generated_code": code, "status": ProcessingStatus.VALIDATING,
-							"logs": [f"Coder: Generated code after {i + 1} research steps."]}
+			code_path = storage_service.save(code, run_id, "py")
+			logs.append(f"Coder: Generated code after {i + 1} research steps.")
+			log_path = storage_service.save("\n".join(logs), run_id, "log")
+			return {"generated_code_path": code_path, "status": ProcessingStatus.VALIDATING,
+							"log_path": log_path}
 
 		messages.append(response)
 
@@ -375,20 +376,27 @@ async def repo_explorer_node(state: AgentState) -> dict[str, Any]:
 			messages.append(ToolMessage(content=tool_output, tool_call_id=tool_call["id"]))
 			log_msg = f"Tool Call: {tool_call['name']}({tool_call['args']}) -> Output: {len(tool_output)} chars"
 			logger.info(f"🛠️ [Coder/Explorer] {log_msg}")
+			logs.append(log_msg)
 
-	return {"status": ProcessingStatus.FAILED,
-					"logs": ["Coder: Failed to generate code within the maximum number of tool iterations."]}
+	logs.append("Coder: Failed to generate code within the maximum number of tool iterations.")
+	log_path = storage_service.save("\n".join(logs), run_id, "log")
+	return {"status": ProcessingStatus.FAILED, "log_path": log_path}
 
 
 async def debugger_node(state: AgentState) -> dict[str, Any]:
 	"""Fixes code based on validation errors or execution traces."""
 	logger.info(f"🔧 [Debugger] Fixing mode activated. Attempt: {state.get('attempts', 0) + 1}")
 	llm = llm_service.get_model(state.get("model_name"))
-	previous_code = state.get("generated_code", "")
+	run_id = state.get("run_id", "unknown_run")
+	logs = []
+
+	previous_code = ""
+	if state.get("generated_code_path"):
+		previous_code = storage_service.load(state["generated_code_path"])
+
 	is_auto_fix = state.get("task_type") == "debug_request"
 
 	if is_auto_fix:
-		run_id = state.get("run_id")
 		# The original error is now expected to be in "user_request" for the auto-fix flow
 		user_error_log = state['user_request'].replace("[AUTO-FIX]", "").strip()
 		last_fix_error = user_error_log
@@ -405,60 +413,79 @@ async def debugger_node(state: AgentState) -> dict[str, Any]:
 				selector=context.get("summary", "").split("'")[1] if "'" in context.get("summary", "") else "N/A"
 			)
 			messages = [HumanMessage(content=human_prompt)]
-			log_msg = f"Debugger: Fixing execution errors with Trace Analysis (Attempt {state.get('attempts', 0) + 1})..."
+			logs.append(f"Debugger: Fixing execution errors with Trace Analysis (Attempt {state.get('attempts', 0) + 1})...")
 		else:
 			logger.warning("⚠️ [Debugger] Trace context not found. Falling back to simple log analysis.")
 			messages = [SystemMessage(content=FIXER_SYSTEM_PROMPT),
-									HumanMessage(content=f"ERROR LOG:\n{user_error_log}\n\nCODE TO FIX:\n{state['generated_code']}")]
-			log_msg = f"Debugger: Fixing with log analysis (Attempt {state.get('attempts', 0) + 1})..."
+									HumanMessage(content=f"ERROR LOG:\n{user_error_log}\n\nCODE TO FIX:\n{previous_code}")]
+			logs.append(f"Debugger: Fixing with log analysis (Attempt {state.get('attempts', 0) + 1})...")
 	else: # This is a validation fix from the reviewer
 		error_context = state.get("validation_error", "")
 		last_fix_error = error_context
 		messages = [SystemMessage(content=FIXER_SYSTEM_PROMPT),
-								HumanMessage(content=f"ERROR LOG:\n{error_context}\n\nCODE TO FIX:\n{state['generated_code']}")]
-		log_msg = f"Debugger: Fixing validation errors (Attempt {state.get('attempts', 0) + 1})..."
+								HumanMessage(content=f"ERROR LOG:\n{error_context}\n\nCODE TO FIX:\n{previous_code}")]
+		logs.append(f"Debugger: Fixing validation errors (Attempt {state.get('attempts', 0) + 1})...")
 
 	try:
 		response = await llm.ainvoke(messages)
 		code = response.content.replace("```python", "").replace("```", "").strip()
 		logger.info(f"✅ [Debugger] Code fixed ({len(code)} chars).")
 
+		new_code_path = storage_service.save(code, run_id, "py")
+		old_code_path = storage_service.save(previous_code, run_id, "py.old")
+		log_path = storage_service.save("\n".join(logs), run_id, "log")
+
 		update: dict[str, Any] = {
-			"generated_code": code,
+			"generated_code_path": new_code_path,
 			"validation_error": None,
 			"status": ProcessingStatus.VALIDATING,
 			"attempts": state.get("attempts", 0) + 1,
-			"logs": [log_msg],
+			"log_path": log_path,
 			"was_fixing": True,
-			"last_fix_old_code": previous_code,
+			"last_fix_old_code_path": old_code_path,
 			"last_fix_error": last_fix_error,
 		}
 		return update
 	except Exception as e:
 		logger.error(f"❌ [Debugger] LLM Generation Failed: {e}", exc_info=True)
-		return {"status": ProcessingStatus.FAILED,
-						"logs": [f"Debugger: Critical LLM Error. The AI Provider returned an error: {str(e)}"]}
+		logs.append(f"Debugger: Critical LLM Error. The AI Provider returned an error: {str(e)}")
+		log_path = storage_service.save("\n".join(logs), run_id, "log")
+		return {"status": ProcessingStatus.FAILED, "log_path": log_path}
 
 
 
 async def reviewer_node(state: AgentState, embedding_function=None) -> dict[str, Any]:
 	logger.info("🚀 [Reviewer] Node started. Validating code...")
-	code = state["generated_code"]
+	run_id = state.get("run_id", "unknown_run")
+	logs = []
+
+	code = ""
+	if state.get("generated_code_path"):
+		code = storage_service.load(state["generated_code_path"])
+
 	is_valid, error_msg, fixed_code = await validation_service.validate(code)
 
-	new_state = {"generated_code": fixed_code or code}
+	new_state = {}
+	if fixed_code:
+		new_state["generated_code_path"] = storage_service.save(fixed_code, run_id, "py")
+		code = fixed_code # Use fixed code for subsequent steps
+
 	dedup_service = DeduplicationService(embedding_function)
 	memory_service = KnowledgeBaseService(embedding_function)
 
 	# If static analysis passed, and it's a UI test, do a live locator check
 	if is_valid and state.get("test_type") == TestType.UI:
 		logger.info("🔬 [Reviewer] Static analysis passed. Performing locator dry run...")
+		logs.append("Reviewer: Static analysis passed. Performing locator dry run...")
 
 		# 1. Extract Locators
 		locators = re.findall(r'page\.locator\("([^"]+)"\)', code)
 
 		# 2. Extract URL from technical context
-		url_match = re.search(r'https?://[^\s]+', state.get("technical_context", ""))
+		tech_context = ""
+		if state.get("technical_context_path"):
+			tech_context = storage_service.load(state["technical_context_path"])
+		url_match = re.search(r'https?://[^\s]+', tech_context)
 
 		if locators and url_match:
 			url = url_match.group(0)
@@ -470,6 +497,8 @@ async def reviewer_node(state: AgentState, embedding_function=None) -> dict[str,
 				error_msg = f"Locator Dry Run Failed: The following locators were not found on page {url}: {missing_locators}. Please find the correct locators in the DOM and fix the code."
 		else:
 			logger.info("✅ [Reviewer] No locators to check or no URL found. Skipping dry run.")
+			logs.append("Reviewer: No locators to check or no URL found. Skipping dry run.")
+
 
 	if is_valid:
 		logger.info("✅ [Reviewer] Code is VALID.")
@@ -477,14 +506,17 @@ async def reviewer_node(state: AgentState, embedding_function=None) -> dict[str,
 		# Learning loop: if we just succeeded after fixing, extract + store a compact lesson.
 		if state.get("was_fixing"):
 			try:
-				new_code = new_state["generated_code"]
-				old_code = state.get("last_fix_old_code") or ""
+				new_code = code # This is the fixed code now
+				old_code = ""
+				if state.get("last_fix_old_code_path"):
+					old_code = storage_service.load(state["last_fix_old_code_path"])
 				error_log = state.get("last_fix_error") or ""
 
+				user_request = state.get("user_request", "")
 				url = (
 					_extract_goto_url_from_code(new_code)
-					or _extract_first_url(state.get("technical_context", ""))
-					or _extract_first_url(state.get("user_request", ""))
+					or _extract_first_url(tech_context)
+					or _extract_first_url(user_request)
 				)
 
 				fix_summary = _extract_fix_summary_from_code(new_code)
@@ -505,36 +537,44 @@ async def reviewer_node(state: AgentState, embedding_function=None) -> dict[str,
 				if fix_summary:
 					memory_service.learn_lesson(url=url, original_error=error_log, fix_summary=fix_summary)
 					logger.info("🧠 [Reviewer] Stored lesson to long-term memory.")
+					logs.append("Reviewer: Stored lesson to long-term memory.")
 			except Exception as e:
 				logger.warning(f"⚠️ [Reviewer] Failed to store lesson (non-fatal): {e}")
+				logs.append(f"Reviewer: Failed to store lesson (non-fatal): {e}")
 
-		dedup_service.save(state['user_request'], new_state["generated_code"])
+		dedup_service.save(state['user_request'], code) # code is the (potentially fixed) generated code
 		new_state["status"] = ProcessingStatus.COMPLETED
-		ai_message_content = (f"I have generated the following code:\n```python\n{new_state['generated_code']}\n```\n\n"
+		ai_message_content = (f"I have generated the following code:\n```python\n{code}\n```\n\n"
 		                      f"What would you like to do next?")
 		new_state["messages"] = state.get("messages", []) + [AIMessage(content=ai_message_content)]
-		new_state["logs"] = ["Reviewer: Code passed all checks (Static + Dry Run). Ready for dispatch.",
-												 "System: Saved to Knowledge Base."]
-		return new_state
+		logs.extend(["Reviewer: Code passed all checks (Static + Dry Run). Ready for dispatch.",
+								 "System: Saved to Knowledge Base."])
+		new_state["log_path"] = storage_service.save("\n".join(logs), run_id, "log")
+		return {**state, **new_state} # Merge current state with new state
 	else:
 		logger.warning(f"❌ [Reviewer] Code is INVALID. Sending back to Coder. Error: {error_msg[:200]}...")
+		logs.append(f"Reviewer: Validation failed.\n{error_msg}")
 		new_state["status"] = ProcessingStatus.FIXING
 		new_state["validation_error"] = error_msg
-		new_state["logs"] = [f"Reviewer: Validation failed.\n{error_msg}"]
-		return new_state
+		new_state["log_path"] = storage_service.save("\n".join(logs), run_id, "log")
+		return {**state, **new_state}
 
 
 async def batch_node(state: AgentState) -> dict[str, Any]:
 	logger.info("🚀 [Batch] Starting parallel processing...")
+	run_id = state.get("run_id", "unknown_run")
 	scenarios = state["scenarios"]
 	results = await process_batch(scenarios)
 	combined_code = "\n\n# ==========================================\n".join(results)
 	logger.info(f"✅ [Batch] Completed {len(results)} scenarios.")
 
+	code_path = storage_service.save(combined_code, run_id, "py")
+	log_path = storage_service.save(f"Batch: Successfully generated {len(results)} tests in parallel.", run_id, "log")
+
 	return {
-		"generated_code": combined_code,
+		"generated_code_path": code_path,
 		"status": ProcessingStatus.COMPLETED,
-		"logs": [f"Batch: Successfully generated {len(results)} tests in parallel."]
+		"log_path": log_path,
 	}
 
 
@@ -543,13 +583,15 @@ async def final_output_node(state: AgentState) -> dict[str, Any]:
     A final node to ensure the last state is explicitly sent to the client.
     """
     logger.info("✅ [Finalizer] Graph complete. Streaming final state.")
+    run_id = state.get("run_id", "unknown_run")
 
-    # Check if a final message has already been set by a previous node (e.g., reviewer)
     final_message = state.get("messages", [])
 
-    # If no message is set, create a default one.
     if not final_message:
-        generated_code = state.get("generated_code", "")
+        generated_code = ""
+        if state.get("generated_code_path"):
+            generated_code = storage_service.load(state["generated_code_path"])
+
         if generated_code:
             final_message_content = (
                 f"I have generated the following code:\n```python\n{generated_code}\n```\n\n"
@@ -559,9 +601,10 @@ async def final_output_node(state: AgentState) -> dict[str, Any]:
             final_message_content = "The process has completed. What would you like to do next?"
         final_message = [AIMessage(content=final_message_content)]
 
+    log_path = storage_service.save("System: All tasks complete. Final output dispatched.", run_id, "log")
     return {
         "status": ProcessingStatus.COMPLETED,
-        "generated_code": state.get("generated_code", ""),
+        "generated_code_path": state.get("generated_code_path", ""),
         "messages": final_message,
-        "logs": ["System: All tasks complete. Final output dispatched."],
+        "log_path": log_path,
     }

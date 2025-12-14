@@ -25,20 +25,19 @@ class AgentState(TypedDict):
 
 	# Learning memory / auto-fix bookkeeping
 	was_fixing: NotRequired[bool]
-	last_fix_old_code: NotRequired[str | None]
+	last_fix_old_code_path: NotRequired[str | None]
 	last_fix_error: NotRequired[str | None]
 
 	status: ProcessingStatus
 	test_type: TestType | None
 	attempts: int
 
-	test_plan: list[str]
-	technical_context: str | None
-	generated_code: str
+	# Paths to large data artifacts stored externally
+	test_plan_path: NotRequired[str | None]
+	technical_context_path: NotRequired[str | None]
+	generated_code_path: NotRequired[str | None]
+	batch_results_path: NotRequired[str | None]
+	log_path: NotRequired[str | None]
 
-	scenarios: list[str] | None
-	batch_results: list[str] | None
-
-	validation_error: str | None
-
-	logs: Annotated[list[str], operator.add]
+	scenarios: NotRequired[list[str] | None]  # Kept for now, assuming it's not excessively large
+	validation_error: NotRequired[str | None]

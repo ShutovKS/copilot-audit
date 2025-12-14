@@ -11,6 +11,7 @@ from langgraph.types import StateSnapshot
 from src.app.api.models import ChatMessageRequest, ApprovalRequest
 from src.app.domain.enums import ProcessingStatus
 from src.app.services.history import HistoryService
+from src.app.services.storage import storage_service
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +62,8 @@ class StreamingService:
 		config = {"configurable": {"thread_id": str(run_id)}}
 
 		# 3. Update State with User Message
-		# Prepare the input, starting with the new message
 		input_data = {"messages": [HumanMessage(content=request_body.message)]}
 
-		# If this is a new run, initialize the full state
 		if not request_body.run_id:
 			input_data.update({
 				"run_id": run_id,
@@ -73,29 +72,22 @@ class StreamingService:
 				"status": ProcessingStatus.ANALYZING,
 				"attempts": 0,
 				"validation_error": None,
-				"test_plan": [],
-				"generated_code": "",
-				"test_type": None,
-				"logs": [],
 			})
 
-		final_code = ""
-		final_plan_str = ""
 		sent_messages = set()
 		final_status: str | None = None
 
 		try:
-			# 4. Stream Graph Execution
 			async for output in self.agent_graph.astream(input_data, config=config):
 				for _node_name, state_update in output.items():
 					if not state_update:
 						continue
 
 					# Handle Logs
-					if "logs" in state_update:
-						for log_msg in state_update["logs"]:
-							data = json.dumps({"type": "log", "content": log_msg})
-							yield f"data: {data}\n\n"
+					if "log_path" in state_update and state_update["log_path"]:
+						log_content = storage_service.load(state_update["log_path"])
+						data = json.dumps({"type": "log", "content": log_content})
+						yield f"data: {data}\n\n"
 
 					# Handle Clarification Messages
 					if "messages" in state_update:
@@ -106,16 +98,15 @@ class StreamingService:
 							sent_messages.add(last_message.id)
 
 					# Handle Plan Updates
-					if "test_plan" in state_update and state_update["test_plan"]:
-						plan_str = "\n".join(state_update["test_plan"])
-						final_plan_str = plan_str
-						data = json.dumps({"type": "plan", "content": plan_str})
+					if "test_plan_path" in state_update and state_update["test_plan_path"]:
+						plan_content = storage_service.load(state_update["test_plan_path"])
+						data = json.dumps({"type": "plan", "content": plan_content})
 						yield f"data: {data}\n\n"
 
 					# Handle Code Updates
-					if "generated_code" in state_update and state_update["generated_code"]:
-						final_code = state_update["generated_code"]
-						data = json.dumps({"type": "code", "content": final_code})
+					if "generated_code_path" in state_update and state_update["generated_code_path"]:
+						code_content = storage_service.load(state_update["generated_code_path"])
+						data = json.dumps({"type": "code", "content": code_content})
 						yield f"data: {data}\n\n"
 
 					# Handle Status
@@ -126,35 +117,36 @@ class StreamingService:
 
 					await asyncio.sleep(0.05)
 
-			# 5. If the graph interrupted (HITL), explicitly mark run as waiting and don't force COMPLETED.
 			state_snapshot = await _maybe_await(
 				self.agent_graph.aget_state(config) if hasattr(self.agent_graph, "aget_state") else self.agent_graph.get_state(config)
 			)
 			is_waiting_approval = _state_next_contains(state_snapshot, "human_approval")
 			if is_waiting_approval:
-				# Ensure UI receives an unambiguous status.
 				data = json.dumps({"type": "status", "content": ProcessingStatus.WAITING_FOR_APPROVAL})
 				yield f"data: {data}\n\n"
+
+				# Persist the current plan path for UI refresh
+				current_plan_path = state_snapshot.values.get("test_plan_path")
 				await self.history_service.update_run(
 					run_id=run_id,
 					status=ProcessingStatus.WAITING_FOR_APPROVAL,
-					test_plan=final_plan_str if final_plan_str else None,
+					test_plan_path=current_plan_path,
 				)
-				# Finish the stream (frontend should now show the approval UI).
 				yield f"data: {json.dumps({'type': 'finish', 'content': 'waiting_for_approval'})}\n\n"
 				return
 
-			# 6. Finish (normal completion)
 			yield f"data: {json.dumps({'type': 'finish', 'content': 'done'})}\n\n"
 
-			# 7. Save Snapshot (Code only for now, full history is in LangGraph checkpoint)
-			# Persist code + plan for History UI (full conversation lives in LangGraph checkpoint).
-			if final_code or final_plan_str:
+			# Final persistence of paths
+			final_code_path = state_snapshot.values.get("generated_code_path")
+			final_plan_path = state_snapshot.values.get("test_plan_path")
+
+			if final_code_path or final_plan_path:
 				await self.history_service.update_run(
 					run_id=run_id,
-					code=final_code if final_code else None,
+					code_path=final_code_path,
 					status=final_status or ProcessingStatus.COMPLETED,
-					test_plan=final_plan_str if final_plan_str else None,
+					test_plan_path=final_plan_path,
 				)
 
 		except Exception as e:
@@ -170,18 +162,24 @@ class StreamingService:
 
 		# Optional: update the plan before resuming.
 		if request_body.feedback and request_body.feedback.strip():
-			new_plan_list = [request_body.feedback.strip()]
-			# Update the persisted History row for refresh/reload UX.
-			await self.history_service.update_run(run_id=request_body.run_id, status=ProcessingStatus.GENERATING, test_plan=request_body.feedback.strip())
+			run_id = request_body.run_id
+			# Save feedback to a file and update the path in LangGraph
+			feedback_path = storage_service.save(request_body.feedback.strip(), run_id, "md")
+
+			# Update the persisted History row with the new plan path
+			await self.history_service.update_run(
+				run_id=run_id,
+				status=ProcessingStatus.GENERATING,
+				test_plan_path=feedback_path
+			)
+
 			# Update LangGraph checkpointed state.
-			update_payload = {"test_plan": new_plan_list}
+			update_payload = {"test_plan_path": feedback_path}
 			if hasattr(self.agent_graph, "aupdate_state"):
 				await _maybe_await(self.agent_graph.aupdate_state(config, update_payload))
 			elif hasattr(self.agent_graph, "update_state"):
 				await _maybe_await(self.agent_graph.update_state(config, update_payload))
 
-		final_code = ""
-		final_plan_str = ""
 		final_status: str | None = None
 		sent_messages = set()
 
@@ -196,10 +194,10 @@ class StreamingService:
 					if not state_update:
 						continue
 
-					if "logs" in state_update:
-						for log_msg in state_update["logs"]:
-							data = json.dumps({"type": "log", "content": log_msg})
-							yield f"data: {data}\n\n"
+					if "log_path" in state_update and state_update["log_path"]:
+						log_content = storage_service.load(state_update["log_path"])
+						data = json.dumps({"type": "log", "content": log_content})
+						yield f"data: {data}\n\n"
 
 					if "messages" in state_update:
 						last_message = state_update["messages"][-1]
@@ -208,15 +206,14 @@ class StreamingService:
 							yield f"data: {data}\n\n"
 							sent_messages.add(last_message.id)
 
-					if "test_plan" in state_update and state_update["test_plan"]:
-						plan_str = "\n".join(state_update["test_plan"])
-						final_plan_str = plan_str
-						data = json.dumps({"type": "plan", "content": plan_str})
+					if "test_plan_path" in state_update and state_update["test_plan_path"]:
+						plan_content = storage_service.load(state_update["test_plan_path"])
+						data = json.dumps({"type": "plan", "content": plan_content})
 						yield f"data: {data}\n\n"
 
-					if "generated_code" in state_update and state_update["generated_code"]:
-						final_code = state_update["generated_code"]
-						data = json.dumps({"type": "code", "content": final_code})
+					if "generated_code_path" in state_update and state_update["generated_code_path"]:
+						code_content = storage_service.load(state_update["generated_code_path"])
+						data = json.dumps({"type": "code", "content": code_content})
 						yield f"data: {data}\n\n"
 
 					if "status" in state_update:
@@ -228,12 +225,19 @@ class StreamingService:
 
 			yield f"data: {json.dumps({'type': 'finish', 'content': 'done'})}\n\n"
 
+			# Final persistence of paths
+			current_state = await _maybe_await(
+				self.agent_graph.aget_state(config) if hasattr(self.agent_graph, "aget_state") else self.agent_graph.get_state(config)
+			)
+			final_code_path = current_state.values.get("generated_code_path")
+			final_plan_path = current_state.values.get("test_plan_path")
+
 			# Persist snapshot for History UI.
 			await self.history_service.update_run(
 				run_id=request_body.run_id,
-				code=final_code if final_code else None,
+				code_path=final_code_path,
 				status=final_status or ProcessingStatus.COMPLETED,
-				test_plan=final_plan_str if final_plan_str else None,
+				test_plan_path=final_plan_path,
 			)
 		except Exception as e:
 			logger.error(f"Approve/Resume Error: {e}", exc_info=True)

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
 	BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
 	REPORTS_DIR: Path = BASE_DIR / "static" / "reports"
+	STORAGE_PATH: Path = BASE_DIR / "storage"
 
 	# Use /app/temp_execution when in Docker, fallback to system temp for local dev
 	TEMP_DIR: Path = Path("/app/temp_execution") if Path("/app/temp_execution").exists() else Path(tempfile.gettempdir()) / "testops_execution"

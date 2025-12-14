@@ -1,4 +1,5 @@
-from typing import Any
+import logging
+from typing import Any, Optional
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
@@ -7,11 +8,12 @@ from sqlalchemy.future import select
 
 from src.app.domain.models import TestRun
 
+logger = logging.getLogger(__name__)
+
 
 class HistoryService:
-	def __init__(self, db: AsyncSession, connection_pool: AsyncConnectionPool = None):
+	def __init__(self, db: AsyncSession):
 		self.db = db
-		self.connection_pool = connection_pool
 
 	async def create_run(self, user_request: str, session_id: str) -> TestRun:
 		run = TestRun(
@@ -24,20 +26,21 @@ class HistoryService:
 		await self.db.refresh(run)
 		return run
 
-	async def update_run(self, run_id: int, code: str = None, status: str = None, test_type: str = None,
-											 test_plan: str = None, hypothesis: str = None):
+	async def update_run(self, run_id: int, code_path: Optional[str] = None, status: Optional[str] = None,
+											 test_type: Optional[str] = None, test_plan_path: Optional[str] = None,
+											 hypothesis: Optional[str] = None):
 		result = await self.db.execute(select(TestRun).where(TestRun.id == run_id))
 		run = result.scalars().first()
 		if run:
-			if code:
-				run.generated_code = code
-			if status:
+			if code_path is not None:
+				run.generated_code_path = code_path
+			if status is not None:
 				run.status = status
-			if test_type:
+			if test_type is not None:
 				run.test_type = test_type
-			if test_plan:
-				run.test_plan = test_plan
-			if hypothesis:
+			if test_plan_path is not None:
+				run.test_plan_path = test_plan_path
+			if hypothesis is not None:
 				run.hypothesis = hypothesis
 			await self.db.commit()
 			await self.db.refresh(run)
@@ -59,15 +62,17 @@ class HistoryService:
 		)
 		return result.scalars().first()
 
-	async def get_run_details(self, run_id: int, session_id: str) -> dict[str, Any] | None:
+	async def get_run_details(self, run_id: int, session_id: str, connection_pool: AsyncConnectionPool | None) -> dict[str, Any] | None:
 		run = await self.get_by_id(run_id, session_id)
 		if not run:
 			return None
 
-		if not self.connection_pool:
+		if not connection_pool:
+			# If connection_pool is not available, we can't get checkpoint messages.
+			# This is a valid scenario if the checkpoint backend is disabled.
 			return {"run": run, "messages": []}
 
-		checkpointer = AsyncPostgresSaver(self.connection_pool)
+		checkpointer = AsyncPostgresSaver(connection_pool)
 		config = {"configurable": {"thread_id": str(run_id)}}
 
 		messages = []
@@ -77,16 +82,21 @@ class HistoryService:
 			checkpoint = await checkpointer.aget(config)
 			channel_values = checkpoint.get("channel_values", {}) if checkpoint else {}
 			messages = channel_values.get("messages", []) or []
-			plan_val = channel_values.get("test_plan")
-			if isinstance(plan_val, list) and plan_val:
-				checkpoint_plan = "\n".join([str(x) for x in plan_val if str(x).strip()])
-			elif isinstance(plan_val, str) and plan_val.strip():
-				checkpoint_plan = plan_val
 
-			code_val = channel_values.get("generated_code")
-			if isinstance(code_val, str) and code_val.strip():
-				checkpoint_code = code_val
-		except Exception:
+			# For checkpoint_plan and checkpoint_code, we now expect paths
+			plan_path_val = channel_values.get("test_plan_path")
+			if plan_path_val and isinstance(plan_path_val, str):
+				# Need to import storage_service here or pass it in
+				from src.app.services.storage import storage_service
+				checkpoint_plan = storage_service.load(plan_path_val)
+
+			code_path_val = channel_values.get("generated_code_path")
+			if code_path_val and isinstance(code_path_val, str):
+				from src.app.services.storage import storage_service
+				checkpoint_code = storage_service.load(code_path_val)
+
+		except Exception as e:
+			logger.error(f"Error loading checkpoint for run_id {run_id}: {e}", exc_info=True)
 			messages = []
 
 		return {
