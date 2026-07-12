@@ -1,71 +1,73 @@
 # TestOps Evolution Forge
 
-**TestOps Evolution Forge** — это автономная мульти-агентная IDE на базе **Cloud.ru Evolution**, которая генерирует, исполняет, отлаживает и **самостоятельно поддерживает** автотесты.
+[Русский](./README.ru.md) | [English](./README.md)
 
-Система имитирует работу Senior QA Automation инженера: она "видит" интерфейс через браузер, анализирует архитектуру проекта через AST, планирует сценарии тестирования и учится на собственных ошибках, сохраняя опыт в векторную базу знаний.
+**TestOps Evolution Forge** is an autonomous multi-agent IDE built on **Cloud.ru Evolution** that generates, executes, debugs, and **self-maintains** automated tests.
+
+The system simulates the work of a Senior QA Automation engineer: it "sees" the interface through a browser, analyzes the project architecture via AST, plans test scenarios, and learns from its own mistakes by storing experience in a vector knowledge base.
 
 ![Status](https://img.shields.io/badge/Status-Production%20Ready-green) ![AI](https://img.shields.io/badge/AI-Cloud.ru%20Evolution-blue) ![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20LangGraph-orange) ![Frontend](https://img.shields.io/badge/Frontend-React%2019%20%7C%20Vite%207-purple)
 
 ## 🚀 Killer Features
 
-### 1. 🧠 Long-term Memory (Долгосрочная память)
+### 1. 🧠 Long-term Memory
 
-Система не наступает на одни и те же грабли дважды.
+The system doesn't make the same mistake twice.
 
-* **Lesson Extraction:** После успешного исправления ошибки (`Auto-Fix`), агент формулирует краткий технический "урок" (например, *"В этом проекте для дропдаунов нужен force=True"*).
-* **RAG Knowledge Base:** Уроки сохраняются в **ChromaDB**. При генерации новых тестов аналитик автоматически подтягивает релевантные знания, предотвращая повторение багов.
+* **Lesson Extraction:** After a successful bug fix (`Auto-Fix`), the agent formulates a brief technical "lesson" (e.g., *"In this project, dropdowns need force=True"*).
+* **RAG Knowledge Base:** Lessons are stored in **ChromaDB**. When generating new tests, the analyst automatically pulls in relevant knowledge, preventing recurring bugs.
 
-### 2. 🤝 Human-in-the-Loop (Контроль человека)
+### 2. 🤝 Human-in-the-Loop
 
-Вы управляете процессом, а не просто наблюдаете.
+You control the process rather than just watching.
 
-* **Test Plan Review:** Агент-Аналитик составляет детальный план тестирования перед написанием кода.
-* **Approval Gate:** Процесс ставится на паузу, позволяя вам отредактировать план, добавить шаги или изменить логику через UI перед тем, как Coder начнет работу.
+* **Test Plan Review:** The Analyst agent builds a detailed test plan before writing code.
+* **Approval Gate:** The process pauses, letting you edit the plan, add steps, or change logic via the UI before the Coder starts working.
 
-### 3. 👁️ Active Vision (Активное зрение)
+### 3. 👁️ Active Vision
 
-Агент не гадает локаторы, а видит их.
+The agent doesn't guess locators — it sees them.
 
-1. Запускает Headless-браузер (Playwright) через сервис **WebInspector**.
-2. Сканирует живой DOM, выделяя семантически важные элементы.
-3. Извлекает реальные `data-testid`, `id`, `class` и ARIA-атрибуты.
-4. Генерирует код, который работает с первого запуска.
+1. Launches a headless browser (Playwright) via the **WebInspector** service.
+2. Scans the live DOM, highlighting semantically important elements.
+3. Extracts real `data-testid`, `id`, `class`, and ARIA attributes.
+4. Generates code that works on the first run.
 
-### 4. ⚡ Parallel Batch Generation (Пакетная генерация)
+### 4. ⚡ Parallel Batch Generation
 
-Нужно покрыть тестами весь функционал сразу?
+Need to cover all functionality with tests at once?
 
-* Аналитик разбивает сложный запрос (например, *"Протестируй весь флоу покупки"*) на атомарные сценарии.
-* Система запускает генерацию кода для каждого сценария **параллельно**, кратно ускоряя процесс.
+* The analyst splits a complex request (e.g., *"Test the entire purchase flow"*) into atomic scenarios.
+* The system runs code generation for each scenario **in parallel**, drastically speeding up the process.
 
-### 5. 🐙 Repo Explorer (Агент-Исследователь)
+### 5. 🐙 Repo Explorer
 
-Для сложных интеграционных тестов включается режим **ReAct**:
+For complex integration tests, a **ReAct** mode is enabled:
 
-* Агент получает инструменты `read_file`, `search_code` и `file_tree`.
-* Он самостоятельно навигирует по вашему Git-репозиторию, изучает существующие Page Objects, модели и API-клиенты, чтобы переиспользовать код проекта.
+* The agent gets the `read_file`, `search_code`, and `file_tree` tools.
+* It autonomously navigates your Git repository, studies existing Page Objects, models, and API clients to reuse the project's code.
 
-### 6. ⏰ Autonomous Maintenance (Самоисцеление)
+### 6. ⏰ Autonomous Maintenance (Self-healing)
 
-Встроенный **Scheduler** работает, пока вы спите:
+A built-in **Scheduler** works while you sleep:
 
-* Каждые 6 часов запускает "Health Check" для существующих тестов.
-* При падении активируется **Trace Inspector**: он распаковывает `trace.zip`, извлекает DOM-снепшот в момент ошибки, сетевые логи и ошибки консоли.
-* **Debugger Agent** анализирует контекст, исправляет тест и уведомляет вас о починке.
+* Every 6 hours it runs a "Health Check" for existing tests.
+* On failure, the **Trace Inspector** activates: it unpacks `trace.zip`, extracts the DOM snapshot at the moment of the error, network logs, and console errors.
+* The **Debugger Agent** analyzes the context, fixes the test, and notifies you of the repair.
 
 ### 7. 🛡️ Smart Quality Gate
 
-Многоступенчатая валидация перед сохранением кода:
+Multi-stage validation before saving code:
 
-* **Security Check:** AST-анализ блокирует опасные импорты (`os`, `subprocess`, `sys`).
-* **Strict Linter:** Авто-форматирование через `ruff`, проверка наличия Allure-декораторов.
-* **Locator Dry Run:** "Пробный прогон" найденных локаторов на живой странице для исключения галлюцинаций.
+* **Security Check:** AST analysis blocks dangerous imports (`os`, `subprocess`, `sys`).
+* **Strict Linter:** Auto-formatting via `ruff`, checks for Allure decorators.
+* **Locator Dry Run:** A "trial run" of found locators on the live page to rule out hallucinations.
 
 ---
 
-## 🏗 Архитектура
+## 🏗 Architecture
 
-Проект построен на **LangGraph** (оркестрация агентов), **Celery/Redis** (асинхронные задачи) и **Docker-in-Docker** (изоляция исполнения).
+The project is built on **LangGraph** (agent orchestration), **Celery/Redis** (async tasks), and **Docker-in-Docker** (execution isolation).
 
 ```mermaid
 graph TD
@@ -106,90 +108,90 @@ graph TD
     Scheduler -.->|Health Check| QueueTask
 ```
 
-### Инфраструктура
+### Infrastructure
 
-* **Frontend:** Nginx раздает статику (React SPA) и проксирует API.
-* **Backend:** FastAPI сервис управляет графом агентов (LangGraph) и стримингом событий (SSE).
-* **Worker:** Отдельный контейнер для исполнения тестов, чтобы не блокировать API.
-* **DinD (Docker-in-Docker):** Тесты запускаются в эфемерных контейнерах `testops-runner`, которые уничтожаются после прогона.
+* **Frontend:** Nginx serves static files (React SPA) and proxies the API.
+* **Backend:** A FastAPI service manages the agent graph (LangGraph) and event streaming (SSE).
+* **Worker:** A separate container for executing tests so it doesn't block the API.
+* **DinD (Docker-in-Docker):** Tests run in ephemeral `testops-runner` containers that are destroyed after a run.
 
 ---
 
-## 🛠 Технологический Стек
+## 🛠 Tech Stack
 
-| Уровень | Технологии |
+| Layer | Technologies |
 |-----------|------------|
 | **Frontend** | React 19, Vite 7, Tailwind CSS v4, Zustand 5, Monaco Editor |
 | **Backend** | Python 3.11, FastAPI, Pydantic, SQLAlchemy 2.0 (Async) |
 | **AI Core** | LangGraph, LangChain, Cloud.ru Evolution (Qwen 2.5/3 Coder) |
-| **Async & Broker** | Celery, Redis (Pub/Sub для стриминга логов) |
+| **Async & Broker** | Celery, Redis (Pub/Sub for log streaming) |
 | **Database** | PostgreSQL (History), ChromaDB (Vector Memory) |
 | **Testing Engine** | Playwright, Pytest, Allure |
 | **Code Analysis** | AST (Python), JavaParser, Regex (JS/TS), Tree-Sitter |
 
 ---
 
-## 🏃‍♂️ Быстрый старт
+## 🏃‍♂️ Quick start
 
-### Предварительные требования
+### Prerequisites
 
 * Docker & Docker Compose
-* API Key от Cloud.ru Evolution (или любого OpenAI-compatible провайдера)
+* An API Key for Cloud.ru Evolution (or any OpenAI-compatible provider)
 
-### Установка и Запуск
+### Installation and running
 
-1. **Клонируйте репозиторий:**
+1. **Clone the repository:**
 
     ```bash
     git clone https://github.com/ShutovKS/copilot-audit.git
     cd copilot-audit
     ```
 
-2. **Настройте окружение:**
-    Создайте файл `backend/.env` на основе примера:
+2. **Configure the environment:**
+    Create a `backend/.env` file based on the example:
 
     ```bash
     cp backend/.env.example backend/.env
     ```
 
-    *Отредактируйте `backend/.env`, указав ваш `CLOUD_RU_API_KEY`.*
+    *Edit `backend/.env` and provide your `CLOUD_RU_API_KEY`.*
 
-3. **Запустите стек:**
+3. **Start the stack:**
 
     ```bash
     docker-compose up --build -d --force-recreate
     ```
 
-4. **Доступ к сервисам:**
+4. **Access the services:**
     * 💻 **Frontend:** `http://localhost`
     * 🔌 **Backend API:** `http://localhost:8000/docs`
-    * 📊 **Allure Reports:** Доступны внутри UI после прогона тестов.
+    * 📊 **Allure Reports:** Available inside the UI after a test run.
 
 ---
 
-## 🔄 Сценарии использования
+## 🔄 Use cases
 
 ### 1. UI Test Generation
 
-* **Промпт:** *"Напиши тест авторизации для <https://example.com>. Проверь валидацию некорректного email."*
-* **Результат:** Система зайдет на сайт, изучит DOM и сгенерирует тест на Playwright.
+* **Prompt:** *"Write an authorization test for <https://example.com>. Check the validation for an invalid email."*
+* **Result:** The system visits the site, studies the DOM, and generates a Playwright test.
 
 ### 2. Repository Analysis (White-Box)
 
-* **Действие:** Нажмите кнопку 📎 (Upload ZIP) или иконку Git, укажите ссылку на репозиторий.
-* **Промпт:** *"Используй PageObjects из репозитория и напиши тест для добавления товара в корзину."*
-* **Результат:** Агент найдет существующие классы страниц и использует их методы.
+* **Action:** Click the 📎 (Upload ZIP) button or the Git icon, and provide a repository link.
+* **Prompt:** *"Use the PageObjects from the repository and write a test for adding a product to the cart."*
+* **Result:** The agent finds existing page classes and uses their methods.
 
 ### 3. Auto-Fix
 
-* **Ситуация:** Вы запустили тест, и он упал.
-* **Действие:** Нажмите кнопку **Auto-Fix** в редакторе.
-* **Результат:** Агент-Отладчик проанализирует логи, скриншоты и трейсы, перепишет код и предложит исправление.
+* **Situation:** You ran a test and it failed.
+* **Action:** Click the **Auto-Fix** button in the editor.
+* **Result:** The Debugger agent analyzes the logs, screenshots, and traces, rewrites the code, and suggests a fix.
 
 ### 4. GitLab Export
 
-* **Действие:** Тест работает идеально? Нажмите **Export**.
-* **Результат:** Система создаст ветку и Merge Request в вашем GitLab проекте.
+* **Action:** The test works perfectly? Click **Export**.
+* **Result:** The system creates a branch and a Merge Request in your GitLab project.
 
 ---
 
